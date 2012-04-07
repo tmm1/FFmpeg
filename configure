@@ -281,6 +281,7 @@ External library support:
   --enable-mmal            enable decoding via MMAL [no]
   --enable-netcdf          enable NetCDF, needed for sofalizer filter [no]
   --enable-nvenc           enable NVIDIA NVENC support [no]
+  --enable-omx             enable encoding via OpenMAX IL [no]
   --enable-openal          enable OpenAL 1.1 capture support [no]
   --enable-opencl          enable OpenCL code
   --enable-opengl          enable OpenGL rendering [no]
@@ -1527,6 +1528,7 @@ EXTERNAL_LIBRARY_LIST="
     mmal
     netcdf
     nvenc
+    omx
     openal
     opencl
     opengl
@@ -2540,6 +2542,7 @@ h264_mediacodec_decoder_select="h264_mp4toannexb_bsf h264_parser"
 h264_mmal_decoder_deps="mmal"
 h264_mmal_decoder_select="mmal"
 h264_mmal_hwaccel_deps="mmal"
+h264_omx_encoder_deps="omx"
 h264_qsv_hwaccel_deps="libmfx"
 h264_vaapi_hwaccel_deps="vaapi"
 h264_vaapi_hwaccel_select="h264_decoder"
@@ -2598,6 +2601,7 @@ mpeg4_crystalhd_decoder_select="crystalhd"
 mpeg4_mmal_decoder_deps="mmal"
 mpeg4_mmal_decoder_select="mmal"
 mpeg4_mmal_hwaccel_deps="mmal"
+mpeg4_omx_encoder_deps="omx"
 mpeg4_vaapi_hwaccel_deps="vaapi"
 mpeg4_vaapi_hwaccel_select="mpeg4_decoder"
 mpeg4_vdpau_decoder_deps="vdpau"
@@ -2736,6 +2740,8 @@ libzvbi_teletext_decoder_deps="libzvbi"
 nvenc_encoder_deps="nvenc"
 nvenc_h264_encoder_deps="nvenc"
 nvenc_hevc_encoder_deps="nvenc"
+omx_deps="dlopen pthreads"
+omx_extralibs='$ldl'
 videotoolbox_deps="VideoToolbox_VideoToolbox_h"
 videotoolbox_extralibs="-framework CoreFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo"
 videotoolbox_encoder_deps="videotoolbox VTCompressionSessionPrepareToEncodeFrames"
@@ -5671,6 +5677,7 @@ enabled nvenc             && { check_header nvEncodeAPI.h || die "ERROR: nvEncod
                              { check_cpp_condition nvEncodeAPI.h "NVENCAPI_MAJOR_VERSION >= 6" ||
                                die "ERROR: NVENC API version 5 or older is not supported"; } &&
                              { [ $target_os != cygwin ] || die "ERROR: NVENC is not supported on Cygwin currently."; }
+enabled omx               && { check_header OMX_Core.h || die "ERROR: OpenMAX IL headers not found"; }
 enabled openal            && { { for al_libs in "${OPENAL_LIBS}" "-lopenal" "-lOpenAL32"; do
                                check_lib 'AL/al.h' alGetError "${al_libs}" && break; done } ||
                                die "ERROR: openal not found"; } &&
