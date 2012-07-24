@@ -28,7 +28,7 @@ version <next>:
 - readvitc filter
 - VAAPI-accelerated format conversion and scaling
 - libnpp/CUDA-accelerated format conversion and scaling
-- Generic OpenMAX IL encoder
+- Generic OpenMAX IL encoder with support for Raspberry Pi
 
 version 3.0:
 - Common Encryption (CENC) MP4 encoding and decoding support
