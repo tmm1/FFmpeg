@@ -472,6 +472,8 @@ static void process_cc608(CCaptionSubContext *ctx, int64_t pts, uint8_t hi, uint
             ff_dlog(ctx, "Unknown command 0x%hhx 0x%hhx\n", hi, lo);
             break;
         }
+    } else if ((hi == 0x17 || hi == 0x1f) && (lo == 0x21 || lo == 0x22 || lo == 0x23)) {
+        /* ignore tab offset */
     } else if (hi >= 0x20) {
         /* Standard characters (always in pairs) */
         handle_char(ctx, hi, lo, pts);
