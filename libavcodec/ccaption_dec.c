@@ -30,6 +30,8 @@
 #define UNSET_FLAG(var, val) ( (var) &=  ~( 1 << (val)) )
 #define CHECK_FLAG(var, val) ( (var) &    ( 1 << (val)) )
 
+static const AVRational ass_tb = {1, 100};
+
 /*
  * TODO list
  * 1) handle font and color completely
@@ -524,8 +526,8 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
 
         if (!ctx->real_time) {
             if (ctx->prev_string) {
-                int start_time = av_rescale_q(ctx->prev_time, avctx->time_base, (AVRational){ 1, 100 });
-                int end_time = av_rescale_q(avpkt->pts, avctx->time_base, (AVRational){ 1, 100 });
+                int start_time = av_rescale_q(ctx->prev_time, avctx->time_base, ass_tb);
+                int end_time = av_rescale_q(avpkt->pts, avctx->time_base, ass_tb);
                 ret = ff_ass_add_rect(sub, ctx->prev_string, start_time, end_time - start_time, 0);
                 if (ret < 0)
                     return ret;
@@ -543,7 +545,7 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
 
             ctx->prev_time = avpkt->pts;
         } else {
-            int start_time = av_rescale_q(avpkt->pts, avctx->time_base, (AVRational){ 1, 100 });
+            int start_time = av_rescale_q(avpkt->pts, avctx->time_base, ass_tb);
             ret = ff_ass_add_rect_bprint(sub, &ctx->buffer, start_time, -1);
             if (ret < 0)
                 return ret;
