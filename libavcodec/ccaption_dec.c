@@ -138,9 +138,7 @@ static av_cold int init_decoder(AVCodecContext *avctx)
     CCaptionSubContext *ctx = avctx->priv_data;
 
     av_bprint_init(&ctx->buffer, 0, AV_BPRINT_SIZE_UNLIMITED);
-    /* taking by default roll up to 2 */
-    ctx->mode = CCMODE_ROLLUP;
-    ctx->rollup = 2;
+    ctx->mode = CCMODE_POPON;
     ret = ff_ass_subtitle_header_default(avctx);
     if (ret < 0) {
         return ret;
@@ -169,6 +167,7 @@ static void flush_decoder(AVCodecContext *avctx)
     ctx->screen[1].row_used = 0;
     av_bprint_clear(&ctx->buffer);
     ctx->screen_changed = 1;
+    ctx->mode = CCMODE_POPON;
 }
 
 /**
