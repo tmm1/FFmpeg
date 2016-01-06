@@ -124,7 +124,7 @@ typedef struct CCaptionSubContext {
     uint8_t cursor_color;
     uint8_t cursor_font;
     AVBPrint buffer;
-    int screen_changed;
+    int screen_reaped;
     int rollup;
     enum cc_mode mode;
     char *prev_string;
@@ -169,7 +169,7 @@ static void flush_decoder(AVCodecContext *avctx)
     ctx->screen[0].row_used = 0;
     ctx->screen[1].row_used = 0;
     av_bprint_clear(&ctx->buffer);
-    ctx->screen_changed = 1;
+    ctx->screen_reaped = 1;
     ctx->mode = CCMODE_POPON;
 }
 
@@ -309,9 +309,9 @@ static int reap_screen(CCaptionSubContext *ctx)
     if (screen->row_used && ctx->buffer.len >= 2) {
         ctx->buffer.len -= 2;
         ctx->buffer.str[ctx->buffer.len] = 0;
-        ctx->screen_changed = 1;
     }
 
+    ctx->screen_reaped = 1;
     return ret;
 }
 
@@ -520,9 +520,9 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
         else
             process_cc608(ctx, *(bptr + i + 1) & 0x7f, *(bptr + i + 2) & 0x7f);
 
-        if (!ctx->screen_changed)
+        if (!ctx->screen_reaped)
             continue;
-        ctx->screen_changed = 0;
+        ctx->screen_reaped = 0;
 
         if (!ctx->real_time) {
             if (ctx->prev_string) {
