@@ -126,10 +126,8 @@ typedef struct CCaptionSubContext {
     int screen_changed;
     int rollup;
     enum cc_mode mode;
-    int64_t start_time;
-    /* visible screen time */
-    int64_t startv_time;
-    int64_t end_time;
+    char *prev_string;
+    int64_t prev_time;
     char prev_cmd[2];
     /* buffer to store pkt data */
     AVBufferRef *pktbuf;
@@ -162,6 +160,7 @@ static av_cold int close_decoder(AVCodecContext *avctx)
     CCaptionSubContext *ctx = avctx->priv_data;
     av_bprint_finalize(&ctx->buffer, NULL);
     av_buffer_unref(&ctx->pktbuf);
+    av_freep(&ctx->prev_string);
     return 0;
 }
 
@@ -276,12 +275,11 @@ static void roll_up(CCaptionSubContext *ctx)
     UNSET_FLAG(screen->row_used, ctx->cursor_row);
 }
 
-static int reap_screen(CCaptionSubContext *ctx, int64_t pts)
+static int reap_screen(CCaptionSubContext *ctx)
 {
     int i;
     int ret = 0;
     struct Screen *screen = ctx->screen + ctx->active_screen;
-    ctx->start_time = ctx->startv_time;
     av_bprint_clear(&ctx->buffer);
 
     for (i = 0; screen->row_used && i < SCREEN_ROWS; i++)
@@ -307,8 +305,6 @@ static int reap_screen(CCaptionSubContext *ctx, int64_t pts)
         ctx->screen_changed = 1;
     }
 
-    ctx->startv_time = pts;
-    ctx->end_time = pts;
     return ret;
 }
 
@@ -367,9 +363,9 @@ static void handle_erase(CCaptionSubContext *ctx, int n_screen)
     screen->row_used = 0;
 }
 
-static void handle_eoc(CCaptionSubContext *ctx, int64_t pts)
+static void handle_eoc(CCaptionSubContext *ctx)
 {
-    reap_screen(ctx, pts);
+    reap_screen(ctx);
     ctx->active_screen = !ctx->active_screen;
     ctx->cursor_column = 0;
 }
@@ -381,7 +377,7 @@ static void handle_delete_end_of_row(CCaptionSubContext *ctx, char hi, char lo)
     write_char(ctx, row, ctx->cursor_column, 0);
 }
 
-static void handle_char(CCaptionSubContext *ctx, char hi, char lo, int64_t pts)
+static void handle_char(CCaptionSubContext *ctx, char hi, char lo)
 {
     struct Screen *screen = get_writing_screen(ctx);
     char *row = screen->characters[ctx->cursor_row];
@@ -409,7 +405,7 @@ static void handle_char(CCaptionSubContext *ctx, char hi, char lo, int64_t pts)
        ff_dlog(ctx, "(%c)\n", hi);
 }
 
-static void process_cc608(CCaptionSubContext *ctx, int64_t pts, uint8_t hi, uint8_t lo)
+static void process_cc608(CCaptionSubContext *ctx, uint8_t hi, uint8_t lo)
 {
     if (hi == ctx->prev_cmd[0] && lo == ctx->prev_cmd[1]) {
         /* ignore redundant command */
@@ -455,7 +451,7 @@ static void process_cc608(CCaptionSubContext *ctx, int64_t pts, uint8_t hi, uint
         case 0x2d:
             /* carriage return */
             ff_dlog(ctx, "carriage return\n");
-            reap_screen(ctx, pts);
+            reap_screen(ctx);
             roll_up(ctx);
             ctx->cursor_column = 0;
             break;
@@ -466,7 +462,7 @@ static void process_cc608(CCaptionSubContext *ctx, int64_t pts, uint8_t hi, uint
         case 0x2f:
             /* end of caption */
             ff_dlog(ctx, "handle_eoc\n");
-            handle_eoc(ctx, pts);
+            handle_eoc(ctx);
             break;
         default:
             ff_dlog(ctx, "Unknown command 0x%hhx 0x%hhx\n", hi, lo);
@@ -476,7 +472,7 @@ static void process_cc608(CCaptionSubContext *ctx, int64_t pts, uint8_t hi, uint
         /* ignore tab offset */
     } else if (hi >= 0x20) {
         /* Standard characters (always in pairs) */
-        handle_char(ctx, hi, lo, pts);
+        handle_char(ctx, hi, lo);
     } else {
         /* Ignoring all other non data code */
         ff_dlog(ctx, "Unknown command 0x%hhx 0x%hhx\n", hi, lo);
@@ -515,16 +511,28 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
         if(cc_type == 1)
             continue;
         else
-            process_cc608(ctx, avpkt->pts, *(bptr + i + 1) & 0x7f, *(bptr + i + 2) & 0x7f);
+            process_cc608(ctx, *(bptr + i + 1) & 0x7f, *(bptr + i + 2) & 0x7f);
         if (ctx->screen_changed)
         {
-            int start_time = av_rescale_q(ctx->start_time, avctx->time_base, (AVRational){ 1, 100 });
-            int end_time = av_rescale_q(ctx->end_time, avctx->time_base, (AVRational){ 1, 100 });
-            ff_dlog(ctx, "cdp writing data (%s)\n",ctx->buffer.str);
-            ret = ff_ass_add_rect_bprint(sub, &ctx->buffer, start_time, end_time - start_time);
-            if (ret < 0)
-                return ret;
-            sub->pts = av_rescale_q(ctx->start_time, avctx->time_base, AV_TIME_BASE_Q);
+            if (ctx->prev_string) {
+                int start_time = av_rescale_q(ctx->prev_time, avctx->time_base, (AVRational){ 1, 100 });
+                int end_time = av_rescale_q(avpkt->pts, avctx->time_base, (AVRational){ 1, 100 });
+                ret = ff_ass_add_rect(sub, ctx->prev_string, start_time, end_time - start_time, 0);
+                if (ret < 0)
+                    return ret;
+                sub->pts = av_rescale_q(ctx->prev_time, avctx->time_base, AV_TIME_BASE_Q);
+                av_freep(&ctx->prev_string);
+            }
+
+            av_bprintf(&ctx->buffer, "\r\n");
+            if (!av_bprint_is_complete(&ctx->buffer))
+                return AVERROR(ENOMEM);
+
+            ctx->prev_string = av_strdup(ctx->buffer.str);
+            if (!ctx->prev_string)
+                return AVERROR(ENOMEM);
+
+            ctx->prev_time = avpkt->pts;
             ctx->screen_changed = 0;
         }
     }
