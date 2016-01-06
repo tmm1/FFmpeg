@@ -162,6 +162,15 @@ static av_cold int close_decoder(AVCodecContext *avctx)
     return 0;
 }
 
+static void flush_decoder(AVCodecContext *avctx)
+{
+    CCaptionSubContext *ctx = avctx->priv_data;
+    ctx->screen[0].row_used = 0;
+    ctx->screen[1].row_used = 0;
+    av_bprint_clear(&ctx->buffer);
+    ctx->screen_changed = 1;
+}
+
 /**
  * @param ctx closed caption context just to print log
  */
@@ -556,6 +565,7 @@ AVCodec ff_ccaption_decoder = {
     .priv_data_size = sizeof(CCaptionSubContext),
     .init           = init_decoder,
     .close          = close_decoder,
+    .flush          = flush_decoder,
     .decode         = decode,
     .priv_class     = &ccaption_dec_class,
 };
