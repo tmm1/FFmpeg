@@ -125,6 +125,7 @@ typedef struct CCaptionSubContext {
     uint8_t cursor_font;
     AVBPrint buffer;
     int screen_reaped;
+    int screen_touched;
     int rollup;
     enum cc_mode mode;
     char *prev_string;
@@ -454,6 +455,7 @@ static void process_cc608(CCaptionSubContext *ctx, uint8_t hi, uint8_t lo)
         case 0x2c:
             /* erase display memory */
             handle_erase(ctx, ctx->active_screen);
+            ctx->screen_touched = 1;
             break;
         case 0x2d:
             /* carriage return */
@@ -480,6 +482,8 @@ static void process_cc608(CCaptionSubContext *ctx, uint8_t hi, uint8_t lo)
     } else if (hi >= 0x20) {
         /* Standard characters (always in pairs) */
         handle_char(ctx, hi, lo);
+        if (ctx->mode != CCMODE_POPON)
+            ctx->screen_touched = 1;
     } else {
         /* Ignoring all other non data code */
         ff_dlog(ctx, "Unknown command 0x%hhx 0x%hhx\n", hi, lo);
@@ -550,7 +554,21 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
             if (ret < 0)
                 return ret;
             sub->pts = av_rescale_q(avpkt->pts, avctx->time_base, AV_TIME_BASE_Q);
+            ctx->prev_time = avpkt->pts;
         }
+    }
+
+    if (ctx->real_time && ctx->screen_touched &&
+        avpkt->pts > ctx->prev_time + av_rescale_q(20, ass_tb, avctx->time_base)) {
+        ctx->screen_touched = 0;
+
+        reap_screen(ctx);
+        ctx->screen_reaped = 0;
+
+        int start_time = av_rescale_q(avpkt->pts, avctx->time_base, ass_tb);
+        ff_ass_add_rect_bprint(sub, &ctx->buffer, start_time, -1);
+        sub->pts = av_rescale_q(avpkt->pts, avctx->time_base, AV_TIME_BASE_Q);
+        ctx->prev_time = avpkt->pts;
     }
 
     *got_sub = sub->num_rects > 0;
