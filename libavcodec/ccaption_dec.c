@@ -312,7 +312,9 @@ static int reap_screen(CCaptionSubContext *ctx)
         ctx->buffer.str[ctx->buffer.len] = 0;
     }
 
-    ctx->screen_reaped = 1;
+    if (ctx->buffer.len || ctx->real_time)
+        ctx->screen_reaped = 1;
+
     return ret;
 }
 
