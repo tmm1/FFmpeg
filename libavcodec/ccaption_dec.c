@@ -369,9 +369,9 @@ static void handle_erase(CCaptionSubContext *ctx, int n_screen)
 
 static void handle_eoc(CCaptionSubContext *ctx)
 {
-    reap_screen(ctx);
     ctx->active_screen = !ctx->active_screen;
     ctx->cursor_column = 0;
+    reap_screen(ctx);
 }
 
 static void handle_delete_end_of_row(CCaptionSubContext *ctx, char hi, char lo)
