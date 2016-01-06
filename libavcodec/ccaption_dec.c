@@ -114,6 +114,7 @@ struct Screen {
 
 typedef struct CCaptionSubContext {
     AVClass *class;
+    int real_time;
     struct Screen screen[2];
     int active_screen;
     uint8_t cursor_row;
@@ -516,8 +517,12 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
             continue;
         else
             process_cc608(ctx, *(bptr + i + 1) & 0x7f, *(bptr + i + 2) & 0x7f);
-        if (ctx->screen_changed)
-        {
+
+        if (!ctx->screen_changed)
+            continue;
+        ctx->screen_changed = 0;
+
+        if (!ctx->real_time) {
             if (ctx->prev_string) {
                 int start_time = av_rescale_q(ctx->prev_time, avctx->time_base, (AVRational){ 1, 100 });
                 int end_time = av_rescale_q(avpkt->pts, avctx->time_base, (AVRational){ 1, 100 });
@@ -537,7 +542,12 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
                 return AVERROR(ENOMEM);
 
             ctx->prev_time = avpkt->pts;
-            ctx->screen_changed = 0;
+        } else {
+            int start_time = av_rescale_q(avpkt->pts, avctx->time_base, (AVRational){ 1, 100 });
+            ret = ff_ass_add_rect_bprint(sub, &ctx->buffer, start_time, -1);
+            if (ret < 0)
+                return ret;
+            sub->pts = av_rescale_q(avpkt->pts, avctx->time_base, AV_TIME_BASE_Q);
         }
     }
 
@@ -545,7 +555,10 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
     return ret;
 }
 
+#define OFFSET(x) offsetof(CCaptionSubContext, x)
+#define SD AV_OPT_FLAG_SUBTITLE_PARAM | AV_OPT_FLAG_DECODING_PARAM
 static const AVOption options[] = {
+    { "real_time", "emit subtitle events as they are decoded for real-time display", OFFSET(real_time), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, SD },
     {NULL}
 };
 
