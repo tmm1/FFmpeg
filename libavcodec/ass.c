@@ -92,7 +92,7 @@ int ff_ass_subtitle_header_default(AVCodecContext *avctx)
 static void insert_ts(AVBPrint *buf, int ts)
 {
     if (ts == -1) {
-        av_bprintf(buf, "9:59:59.99,");
+        av_bprintf(buf, "999:59:59.99,");
     } else {
         int h, m, s;
 
