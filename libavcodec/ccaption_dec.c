@@ -316,7 +316,7 @@ static void roll_up(CCaptionSubContext *ctx)
 
 static int capture_screen(CCaptionSubContext *ctx)
 {
-    int i;
+    int i, j, tab = 0;
     struct Screen *screen = ctx->screen + ctx->active_screen;
     enum cc_font prev_font = CCFONT_REGULAR;
     av_bprint_clear(&ctx->buffer);
@@ -325,12 +325,29 @@ static int capture_screen(CCaptionSubContext *ctx)
     {
         if (CHECK_FLAG(screen->row_used, i)) {
             const char *row = screen->characters[i];
-            const char *font = screen->fonts[i];
-            int j = 0;
-
-            /* skip leading space */
+            j = 0;
             while (row[j] == ' ')
                 j++;
+            if (!tab || j < tab)
+                tab = j;
+        }
+    }
+
+    for (i = 0; screen->row_used && i < SCREEN_ROWS; i++)
+    {
+        if (CHECK_FLAG(screen->row_used, i)) {
+            const char *row = screen->characters[i];
+            const char *font = screen->fonts[i];
+            int x, y, seen_char = 0;
+            j = 0;
+
+            /* skip leading space */
+            while (row[j] == ' ' && j < tab)
+                j++;
+
+            x = ASS_DEFAULT_PLAYRESX * (0.1 + 0.0250 * j);
+            y = ASS_DEFAULT_PLAYRESY * (0.1 + 0.0533 * i);
+            av_bprintf(&ctx->buffer, "{\\an7}{\\pos(%d,%d)}", x, y);
 
             for (; j < SCREEN_COLUMNS; j++) {
                 const char *e_tag = "", *s_tag = "";
@@ -365,8 +382,12 @@ static int capture_screen(CCaptionSubContext *ctx)
                 prev_font = font[j];
                 if (row[j] == 1)
                     av_bprintf(&ctx->buffer, "%s%s\u266A", e_tag, s_tag);
-                else
+                else if (row[j] == ' ' && !seen_char)
+                    av_bprintf(&ctx->buffer, "%s%s\\h", e_tag, s_tag);
+                else {
                     av_bprintf(&ctx->buffer, "%s%s%c", e_tag, s_tag, row[j]);
+                    seen_char = 1;
+                }
 
             }
             av_bprintf(&ctx->buffer, "\\N");
