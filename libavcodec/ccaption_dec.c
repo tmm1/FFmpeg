@@ -362,7 +362,11 @@ static int capture_screen(CCaptionSubContext *ctx)
                     }
                 }
                 prev_font = font[j];
-                av_bprintf(&ctx->buffer, "%s%s%c", e_tag, s_tag, row[j]);
+                if (row[j] == 1)
+                    av_bprintf(&ctx->buffer, "%s%s\u266A", e_tag, s_tag);
+                else
+                    av_bprintf(&ctx->buffer, "%s%s%c", e_tag, s_tag, row[j]);
+
             }
             av_bprintf(&ctx->buffer, "\\N");
         }
@@ -556,6 +560,9 @@ static void process_cc608(CCaptionSubContext *ctx, int64_t pts, uint8_t hi, uint
             ff_dlog(ctx, "Unknown command 0x%hhx 0x%hhx\n", hi, lo);
             break;
         }
+    } else if (hi == 0x11 && lo == 0x37) {
+        /* Musical note glyph */
+        handle_char(ctx, 1, 0, pts);
     } else if (hi >= 0x20) {
         /* Standard characters (always in pairs) */
         handle_char(ctx, hi, lo, pts);
