@@ -63,6 +63,116 @@ enum cc_font {
     CCFONT_UNDERLINED_ITALICS,
 };
 
+enum cc_charset {
+    CCSET_BASIC_AMERICAN,
+    CCSET_SPECIAL_AMERICAN,
+    CCSET_EXTENDED_SPANISH_FRENCH,
+    CCSET_EXTENDED_PORTUGUESE_GERMAN,
+};
+
+static const char *charset_overrides[4][128] =
+{
+    [CCSET_BASIC_AMERICAN] = {
+        [0x27] = "’",
+        [0x2a] = "á",
+        [0x5c] = "é",
+        [0x5e] = "í",
+        [0x5f] = "ó",
+        [0x60] = "ú",
+        [0x7b] = "ç",
+        [0x7c] = "÷",
+        [0x7d] = "Ñ",
+        [0x7e] = "ñ",
+        [0x7f] = "\u2588"
+    },
+    [CCSET_SPECIAL_AMERICAN] = {
+        [0x30] = "®",
+        [0x31] = "°",
+        [0x32] = "½",
+        [0x33] = "¿",
+        [0x34] = "™",
+        [0x35] = "¢",
+        [0x36] = "£",
+        [0x37] = "♪",
+        [0x38] = "à",
+        [0x39] = "\u00A0",
+        [0x3a] = "è",
+        [0x3b] = "â",
+        [0x3c] = "ê",
+        [0x3d] = "î",
+        [0x3e] = "ô",
+        [0x3f] = "û",
+    },
+    [CCSET_EXTENDED_SPANISH_FRENCH] = {
+        [0x20] = "Á",
+        [0x21] = "É",
+        [0x22] = "Ó",
+        [0x23] = "Ú",
+        [0x24] = "Ü",
+        [0x25] = "ü",
+        [0x26] = "´",
+        [0x27] = "¡",
+        [0x28] = "*",
+        [0x29] = "‘",
+        [0x2a] = "-",
+        [0x2b] = "©",
+        [0x2c] = "℠",
+        [0x2d] = "·",
+        [0x2e] = "“",
+        [0x2f] = "”",
+        [0x30] = "À",
+        [0x31] = "Â",
+        [0x32] = "Ç",
+        [0x33] = "È",
+        [0x34] = "Ê",
+        [0x35] = "Ë",
+        [0x36] = "ë",
+        [0x37] = "Î",
+        [0x38] = "Ï",
+        [0x39] = "ï",
+        [0x3a] = "Ô",
+        [0x3b] = "Ù",
+        [0x3c] = "ù",
+        [0x3d] = "Û",
+        [0x3e] = "«",
+        [0x3f] = "»",
+    },
+    [CCSET_EXTENDED_PORTUGUESE_GERMAN] = {
+        [0x20] = "Ã",
+        [0x21] = "ã",
+        [0x22] = "Í",
+        [0x23] = "Ì",
+        [0x24] = "ì",
+        [0x25] = "Ò",
+        [0x26] = "ò",
+        [0x27] = "Õ",
+        [0x28] = "õ",
+        [0x29] = "{",
+        [0x2a] = "}",
+        [0x2b] = "\\",
+        [0x2c] = "^",
+        [0x2d] = "_",
+        [0x2e] = "|",
+        [0x2f] = "~",
+        [0x30] = "Ä",
+        [0x31] = "ä",
+        [0x32] = "Ö",
+        [0x33] = "ö",
+        [0x34] = "ß",
+        [0x35] = "¥",
+        [0x36] = "¤",
+        [0x37] = "¦",
+        [0x38] = "Å",
+        [0x39] = "å",
+        [0x3a] = "Ø",
+        [0x3b] = "ø",
+        [0x3c] = "┌",
+        [0x3d] = "┐",
+        [0x3e] = "└",
+        [0x3f] = "┘",
+    },
+};
+
 static const unsigned char pac2_attribs[32][3] = // Color, font, ident
 {
     { CCCOL_WHITE,   CCFONT_REGULAR,            0 },  // 0x40 || 0x60
@@ -103,6 +213,7 @@ static const unsigned char pac2_attribs[32][3] = // Color, font, ident
 struct Screen {
     /* +1 is used to compensate null character of string */
     uint8_t characters[SCREEN_ROWS][SCREEN_COLUMNS+1];
+    uint8_t charsets[SCREEN_ROWS][SCREEN_COLUMNS+1];
     uint8_t colors[SCREEN_ROWS][SCREEN_COLUMNS+1];
     uint8_t fonts[SCREEN_ROWS][SCREEN_COLUMNS+1];
     /*
@@ -123,6 +234,7 @@ typedef struct CCaptionSubContext {
     uint8_t cursor_column;
     uint8_t cursor_color;
     uint8_t cursor_font;
+    uint8_t cursor_charset;
     AVBPrint buffer;
     int buffer_changed;
     int rollup;
@@ -189,6 +301,7 @@ static void flush_decoder(AVCodecContext *avctx)
     ctx->cursor_column = 0;
     ctx->cursor_font = 0;
     ctx->cursor_color = 0;
+    ctx->cursor_charset = 0;
     ctx->active_screen = 0;
     ctx->last_real_time = 0;
     ctx->screen_touched = 0;
@@ -204,10 +317,13 @@ static int write_char(CCaptionSubContext *ctx, struct Screen *screen, char ch)
     uint8_t col = ctx->cursor_column;
     char *row = screen->characters[ctx->cursor_row];
     char *font = screen->fonts[ctx->cursor_row];
+    char *charset = screen->charsets[ctx->cursor_row];
 
     if (col < SCREEN_COLUMNS) {
         row[col] = ch;
         font[col] = ctx->cursor_font;
+        charset[col] = ctx->cursor_charset;
+        ctx->cursor_charset = CCSET_BASIC_AMERICAN;
         if (ch) ctx->cursor_column++;
         return 0;
     }
@@ -325,10 +441,12 @@ static int capture_screen(CCaptionSubContext *ctx)
         if (CHECK_FLAG(screen->row_used, i)) {
             const char *row = screen->characters[i];
             const char *font = screen->fonts[i];
+            const char *charset = screen->charsets[i];
+            const char *override;
             int j = 0;
 
             /* skip leading space */
-            while (row[j] == ' ')
+            while (row[j] == ' ' && charset[j] == CCSET_BASIC_AMERICAN)
                 j++;
 
             for (; j < SCREEN_COLUMNS; j++) {
@@ -362,7 +480,12 @@ static int capture_screen(CCaptionSubContext *ctx)
                     }
                 }
                 prev_font = font[j];
-                av_bprintf(&ctx->buffer, "%s%s%c", e_tag, s_tag, row[j]);
+                override = charset_overrides[(int)charset[j]][(int)row[j]];
+                if (override) {
+                    av_bprintf(&ctx->buffer, "%s%s%s", e_tag, s_tag, override);
+                } else {
+                    av_bprintf(&ctx->buffer, "%s%s%c", e_tag, s_tag, row[j]);
+                }
             }
             av_bprintf(&ctx->buffer, "\\N");
         }
@@ -419,6 +542,7 @@ static void handle_pac(CCaptionSubContext *ctx, uint8_t hi, uint8_t lo)
     ctx->cursor_row = row_map[index] - 1;
     ctx->cursor_color =  pac2_attribs[lo][0];
     ctx->cursor_font = pac2_attribs[lo][1];
+    ctx->cursor_charset = CCSET_BASIC_AMERICAN;
     ctx->cursor_column = 0;
     indent = pac2_attribs[lo][2];
     for (i = 0; i < indent; i++) {
@@ -474,7 +598,25 @@ static void handle_char(CCaptionSubContext *ctx, char hi, char lo, int64_t pts)
 
     SET_FLAG(screen->row_used, ctx->cursor_row);
 
-    write_char(ctx, screen, hi);
+    switch (hi) {
+      case 0x11:
+        ctx->cursor_charset = CCSET_SPECIAL_AMERICAN;
+        break;
+      case 0x12:
+        if (ctx->cursor_column > 0)
+            ctx->cursor_column -= 1;
+        ctx->cursor_charset = CCSET_EXTENDED_SPANISH_FRENCH;
+        break;
+      case 0x13:
+        if (ctx->cursor_column > 0)
+            ctx->cursor_column -= 1;
+        ctx->cursor_charset = CCSET_EXTENDED_PORTUGUESE_GERMAN;
+        break;
+      default:
+        ctx->cursor_charset = CCSET_BASIC_AMERICAN;
+        write_char(ctx, screen, hi);
+        break;
+    }
 
     if (lo) {
         write_char(ctx, screen, lo);
@@ -560,6 +702,9 @@ static void process_cc608(CCaptionSubContext *ctx, int64_t pts, uint8_t hi, uint
             ff_dlog(ctx, "Unknown command 0x%hhx 0x%hhx\n", hi, lo);
             break;
         }
+    } else if (hi >= 0x11 && hi <= 0x13) {
+        /* Special characters */
+        handle_char(ctx, hi, lo, pts);
     } else if (hi >= 0x20) {
         /* Standard characters (always in pairs) */
         handle_char(ctx, hi, lo, pts);
