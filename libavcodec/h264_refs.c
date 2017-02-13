@@ -560,6 +560,23 @@ static H264Picture *remove_long(H264Context *h, int i, int ref_mask)
     return pic;
 }
 
+void ff_h264_remove_cur_pic_ref(H264Context *h)
+{
+    int j;
+
+    if (h->short_ref[0] == h->cur_pic_ptr) {
+        remove_short_at_index(h, 0);
+    }
+
+    if (h->cur_pic_ptr->long_ref) {
+        for (j = 0; j < FF_ARRAY_ELEMS(h->long_ref); j++) {
+            if (h->long_ref[j] == h->cur_pic_ptr) {
+                remove_long(h, j, 0);
+            }
+        }
+    }
+}
+
 void ff_h264_remove_all_refs(H264Context *h)
 {
     int i;
@@ -571,8 +588,7 @@ void ff_h264_remove_all_refs(H264Context *h)
 
     if (h->short_ref_count && !h->last_pic_for_ec.f->data[0]) {
         ff_h264_unref_picture(h, &h->last_pic_for_ec);
-        if (h->short_ref[0]->f->buf[0])
-            ff_h264_ref_picture(h, &h->last_pic_for_ec, h->short_ref[0]);
+        ff_h264_ref_picture(h, &h->last_pic_for_ec, h->short_ref[0]);
     }
 
     for (i = 0; i < h->short_ref_count; i++) {

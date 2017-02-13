@@ -177,6 +177,9 @@ int ff_h264_field_end(H264Context *h, H264SliceContext *sl, int in_setup)
         if (err < 0)
             av_log(avctx, AV_LOG_ERROR,
                    "hardware accelerator failed to decode picture\n");
+
+        if (err < 0 && avctx->hwaccel->pix_fmt == AV_PIX_FMT_VIDEOTOOLBOX)
+            ff_h264_remove_cur_pic_ref(h);
     }
 
 #if FF_API_CAP_VDPAU
