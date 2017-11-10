@@ -3460,6 +3460,20 @@ typedef struct AVHWAccel {
     int (*start_frame)(AVCodecContext *avctx, const uint8_t *buf, uint32_t buf_size);
 
     /**
+     * Callback for parameter data (SPS/PPS/VPS etc).
+     *
+     * Useful for hardware decoders which keep persistent state about the
+     * video parameters, and need to receive any changes to update that state.
+     *
+     * @param avctx the codec context
+     * @param type the parameter type
+     * @param buf the slice data buffer base
+     * @param buf_size the size of the slice in bytes
+     * @return zero if successful, a negative value otherwise
+     */
+    int (*decode_params)(AVCodecContext *avctx, int type, const uint8_t *buf, uint32_t buf_size);
+
+    /**
      * Callback for each slice.
      *
      * Meaningful slice information (codec specific) is guaranteed to
