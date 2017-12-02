@@ -24,6 +24,7 @@
 #include <sys/types.h>
 
 #include "libavutil/common.h"
+#include "libavutil/hwcontext_mediacodec.h"
 #include "libavutil/mem.h"
 #include "libavutil/log.h"
 #include "libavutil/pixfmt.h"
@@ -475,8 +476,12 @@ int ff_mediacodec_dec_init(AVCodecContext *avctx, MediaCodecDecContext *s,
     pix_fmt = ff_get_format(avctx, pix_fmts);
     if (pix_fmt == AV_PIX_FMT_MEDIACODEC) {
         AVMediaCodecContext *user_ctx = avctx->hwaccel_context;
+        AVMediaCodecDeviceContext *device_ctx = avctx->hw_device_ctx;
 
-        if (user_ctx && user_ctx->surface) {
+        if (device_ctx && device_ctx->surface) {
+            s->surface = ff_mediacodec_surface_ref(device_ctx->surface, avctx);
+            av_log(avctx, AV_LOG_INFO, "Using surface %p\n", s->surface);
+        } else if (user_ctx && user_ctx->surface) {
             s->surface = ff_mediacodec_surface_ref(user_ctx->surface, avctx);
             av_log(avctx, AV_LOG_INFO, "Using surface %p\n", s->surface);
         }
