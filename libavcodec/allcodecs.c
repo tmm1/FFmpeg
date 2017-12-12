@@ -216,6 +216,7 @@ static void register_all(void)
     REGISTER_ENCODER(PRORES_AW,         prores_aw);
     REGISTER_ENCODER(PRORES_KS,         prores_ks);
     REGISTER_DECODER(PRORES_LGPL,       prores_lgpl);
+    REGISTER_ENCODER(PRORES_VIDEOTOOLBOX,prores_videotoolbox);
     REGISTER_DECODER(PSD,               psd);
     REGISTER_DECODER(PTX,               ptx);
     REGISTER_DECODER(QDRAW,             qdraw);
