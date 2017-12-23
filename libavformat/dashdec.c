@@ -20,10 +20,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 #include <libxml/parser.h>
+#include "libavutil/avassert.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
 #include "libavutil/parseutils.h"
+#include "libavformat/http.h"
 #include "internal.h"
 #include "avio_internal.h"
 #include "dash.h"
@@ -76,6 +78,7 @@ struct representation {
     char *url_template;
     AVIOContext pb;
     AVIOContext *input;
+    int input_read_done;
     AVFormatContext *parent;
     AVFormatContext *ctx;
     AVPacket pkt;
@@ -141,6 +144,8 @@ typedef struct DASHContext {
     char *headers;                       ///< holds HTTP headers set as an AVOption to the HTTP protocol context
     char *allowed_extensions;
     AVDictionary *avio_opts;
+    int http_persistent;
+    AVIOContext *manifest_pb;
 } DASHContext;
 
 static uint64_t get_current_time_in_sec(void)
@@ -322,6 +327,7 @@ static void free_representation(struct representation *pls)
     av_freep(&pls->pb.buffer);
     if (pls->input)
         ff_format_io_close(pls->parent, &pls->input);
+    pls->input_read_done = 0;
     if (pls->ctx) {
         pls->ctx->pb = NULL;
         avformat_close_input(&pls->ctx);
@@ -340,6 +346,8 @@ static void set_httpheader_options(DASHContext *c, AVDictionary **opts)
     if (c->is_live) {
         av_dict_set(opts, "seekable", "0", 0);
     }
+    if (c->http_persistent)
+        av_dict_set(opts, "multiple_requests", "1", 0);
 }
 static void update_options(char **dest, const char *name, void *src)
 {
@@ -347,6 +355,20 @@ static void update_options(char **dest, const char *name, void *src)
     av_opt_get(src, name, AV_OPT_SEARCH_CHILDREN, (uint8_t**)dest);
     if (*dest)
         av_freep(dest);
+}
+
+static int open_url_keepalive(AVFormatContext *s, AVIOContext **pb,
+                              const char *url)
+{
+    int ret;
+    URLContext *uc = ffio_geturlcontext(*pb);
+    av_assert0(uc);
+    (*pb)->eof_reached = 0;
+    ret = ff_http_do_new_request(uc, url);
+    if (ret < 0) {
+        ff_format_io_close(s, pb);
+    }
+    return ret;
 }
 
 static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
@@ -392,7 +414,20 @@ static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
     else if (strcmp(proto_name, "file") || !strncmp(url, "file,", 5))
         return AVERROR_INVALIDDATA;
 
-    ret = s->io_open(s, pb, url, AVIO_FLAG_READ, &tmp);
+    if (c->http_persistent && *pb && av_strstart(proto_name, "http", NULL)) {
+        ret = open_url_keepalive(s, pb, url);
+        if (ret == AVERROR_EXIT) {
+            return ret;
+        } else if (ret > 0) {
+            if (ret != AVERROR_EOF)
+                av_log(s, AV_LOG_WARNING,
+                    "keepalive request failed for '%s', retrying with new connection: %s\n",
+                    url, av_err2str(ret));
+            ret = s->io_open(s, pb, url, AVIO_FLAG_READ, &tmp);
+        }
+    } else {
+        ret = s->io_open(s, pb, url, AVIO_FLAG_READ, &tmp);
+    }
     if (ret >= 0) {
         // update cookies on http response with setcookies.
         char *new_cookies = NULL;
@@ -882,14 +917,31 @@ static int parse_manifest(AVFormatContext *s, const char *url, AVIOContext *in)
     int32_t audio_rep_idx = 0;
     int32_t video_rep_idx = 0;
 
-    if (!in) {
-        close_in = 1;
+    if (!in && c->http_persistent && c->manifest_pb) {
+        in = c->manifest_pb;
+        ret = open_url_keepalive(s, &c->manifest_pb, url);
+        if (ret == AVERROR_EXIT) {
+            return ret;
+        } else if (ret < 0) {
+            if (ret != AVERROR_EOF)
+                av_log(s, AV_LOG_WARNING,
+                    "keepalive request failed for '%s', retrying with new connection: %s\n",
+                    url, av_err2str(ret));
+            in = NULL;
+        }
+    }
 
+    if (!in) {
         set_httpheader_options(c, &opts);
         ret = avio_open2(&in, url, AVIO_FLAG_READ, c->interrupt_callback, &opts);
         av_dict_free(&opts);
         if (ret < 0)
             return ret;
+
+        if (c->http_persistent)
+            c->manifest_pb = in;
+        else
+            close_in = 1;
     }
 
     if (av_opt_get(in, "location", AV_OPT_SEARCH_CHILDREN, &new_url) >= 0) {
@@ -1295,7 +1347,7 @@ static int read_from_url(struct representation *pls, struct fragment *seg,
     return ret;
 }
 
-static int open_input(DASHContext *c, struct representation *pls, struct fragment *seg)
+static int open_input(DASHContext *c, struct representation *pls, struct fragment *seg, AVIOContext **in)
 {
     AVDictionary *opts = NULL;
     char url[MAX_URL_SIZE];
@@ -1312,7 +1364,7 @@ static int open_input(DASHContext *c, struct representation *pls, struct fragmen
     ff_make_absolute_url(url, MAX_URL_SIZE, c->base_url, seg->url);
     av_log(pls->parent, AV_LOG_VERBOSE, "DASH request for url '%s', offset %"PRId64", playlist %d\n",
            url, seg->url_offset, pls->rep_idx);
-    ret = open_url(pls->parent, &pls->input, url, c->avio_opts, opts, NULL);
+    ret = open_url(pls->parent, in, url, c->avio_opts, opts, NULL);
     if (ret < 0) {
         goto cleanup;
     }
@@ -1321,11 +1373,11 @@ static int open_input(DASHContext *c, struct representation *pls, struct fragmen
      * should already be where want it to, but this allows e.g. local testing
      * without a HTTP server. */
     if (!ret && seg->url_offset) {
-        int64_t seekret = avio_seek(pls->input, seg->url_offset, SEEK_SET);
+        int64_t seekret = avio_seek(*in, seg->url_offset, SEEK_SET);
         if (seekret < 0) {
             av_log(pls->parent, AV_LOG_ERROR, "Unable to seek to offset %"PRId64" of DASH fragment '%s'\n", seg->url_offset, seg->url);
             ret = (int) seekret;
-            ff_format_io_close(pls->parent, &pls->input);
+            ff_format_io_close(pls->parent, in);
         }
     }
 
@@ -1347,7 +1399,7 @@ static int update_init_section(struct representation *pls)
     if (!pls->init_section || pls->init_sec_buf)
         return 0;
 
-    ret = open_input(c, pls, pls->init_section);
+    ret = open_input(c, pls, pls->init_section, &pls->input);
     if (ret < 0) {
         av_log(pls->parent, AV_LOG_WARNING,
                "Failed to open an initialization section in playlist %d\n",
@@ -1400,20 +1452,21 @@ static int read_data(void *opaque, uint8_t *buf, int buf_size)
     DASHContext *c = v->parent->priv_data;
 
 restart:
-    if (!v->input) {
+    if (!v->input || (c->http_persistent && v->input_read_done)) {
         free_fragment(&v->cur_seg);
         v->cur_seg = get_current_fragment(v);
         if (!v->cur_seg) {
             ret = AVERROR_EOF;
             goto end;
         }
+        v->input_read_done = 0;
 
         /* load/update Media Initialization Section, if any */
         ret = update_init_section(v);
         if (ret)
             goto end;
 
-        ret = open_input(c, v, v->cur_seg);
+        ret = open_input(c, v, v->cur_seg, &v->input);
         if (ret < 0) {
             if (ff_check_interrupt(c->interrupt_callback)) {
                 goto end;
@@ -1445,6 +1498,12 @@ restart:
     ret = read_from_url(v, v->cur_seg, buf, buf_size, READ_NORMAL);
     if (ret > 0)
         goto end;
+
+    if (c->http_persistent) {
+        v->input_read_done = 1;
+    } else {
+        ff_format_io_close(v->ctx, &v->input);
+    }
 
     if (!v->is_restart_needed)
         v->cur_seq_no++;
@@ -1695,6 +1754,7 @@ static int dash_read_packet(AVFormatContext *s, AVPacket *pkt)
                 cur->init_sec_buf_read_offset = 0;
                 if (cur->input)
                     ff_format_io_close(cur->parent, &cur->input);
+                cur->input_read_done = 0;
                 ret = reopen_demux_for_component(s, cur);
                 cur->is_restart_needed = 0;
             }
@@ -1714,6 +1774,7 @@ static int dash_close(AVFormatContext *s)
         free_representation(c->cur_video);
     }
 
+    ff_format_io_close(s, &c->manifest_pb);
     av_freep(&c->cookies);
     av_freep(&c->user_agent);
     av_dict_free(&c->avio_opts);
@@ -1740,6 +1801,7 @@ static int dash_seek(AVFormatContext *s, struct representation *pls, int64_t see
 
     if (pls->input)
         ff_format_io_close(pls->parent, &pls->input);
+    pls->input_read_done = 0;
 
     // find the nearest fragment
     if (pls->n_timelines > 0 && pls->fragment_timescale > 0) {
@@ -1827,6 +1889,8 @@ static const AVOption dash_options[] = {
         OFFSET(allowed_extensions), AV_OPT_TYPE_STRING,
         {.str = "aac,m4a,m4s,m4v,mov,mp4"},
         INT_MIN, INT_MAX, FLAGS},
+    {"http_persistent", "Use persistent HTTP connections",
+        OFFSET(http_persistent), AV_OPT_TYPE_BOOL, {.i64 = 1}, 0, 1, FLAGS },
     {NULL}
 };
 
