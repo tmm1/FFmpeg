@@ -31,6 +31,7 @@
 #include "libavutil/pixfmt.h"
 
 #include "avcodec.h"
+#include "decode.h"
 #include "h264_parse.h"
 #include "hevc_parse.h"
 #include "hwaccel.h"
@@ -424,29 +425,12 @@ static int mediacodec_process_data(AVCodecContext *avctx, AVFrame *frame,
     return ff_mediacodec_dec_decode(avctx, s->ctx, frame, got_frame, pkt);
 }
 
-static int mediacodec_decode_frame(AVCodecContext *avctx, void *data,
-                                   int *got_frame, AVPacket *avpkt)
+static int mediacodec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
 {
     MediaCodecH264DecContext *s = avctx->priv_data;
-    AVFrame *frame    = data;
     int ret;
-
-    /* buffer the input packet */
-    if (avpkt->size) {
-        AVPacket input_pkt = { 0 };
-
-        if (av_fifo_space(s->fifo) < sizeof(input_pkt)) {
-            ret = av_fifo_realloc2(s->fifo,
-                                   av_fifo_size(s->fifo) + sizeof(input_pkt));
-            if (ret < 0)
-                return ret;
-        }
-
-        ret = av_packet_ref(&input_pkt, avpkt);
-        if (ret < 0)
-            return ret;
-        av_fifo_generic_write(s->fifo, &input_pkt, sizeof(input_pkt), NULL);
-    }
+    int got_frame = 0, pkt_size = 0;
+    AVPacket pkt = {0}, *avpkt = &pkt;
 
     /*
      * MediaCodec.flush() discards both input and output buffers, thus we
@@ -470,26 +454,50 @@ static int mediacodec_decode_frame(AVCodecContext *avctx, void *data,
      */
     if (ff_mediacodec_dec_is_flushing(avctx, s->ctx)) {
         if (!ff_mediacodec_dec_flush(avctx, s->ctx)) {
-            return avpkt->size;
+            return 0;
         }
+        return AVERROR(EAGAIN);
     }
 
+    ret = ff_decode_get_packet(avctx, avpkt);
+    if (ret < 0 && ret != AVERROR_EOF)
+        return ret;
+    pkt_size = avpkt->size;
+
+    /* buffer the input packet */
+    if (avpkt->size) {
+        AVPacket input_pkt = { 0 };
+
+        if (av_fifo_space(s->fifo) < sizeof(input_pkt)) {
+            ret = av_fifo_realloc2(s->fifo,
+                                   av_fifo_size(s->fifo) + sizeof(input_pkt));
+            if (ret < 0)
+                return ret;
+        }
+
+        ret = av_packet_ref(&input_pkt, avpkt);
+        if (ret < 0)
+            return ret;
+        av_fifo_generic_write(s->fifo, &input_pkt, sizeof(input_pkt), NULL);
+    }
+    av_packet_unref(avpkt);
+
     /* process buffered data */
-    while (!*got_frame) {
+    while (!got_frame) {
         /* prepare the input data */
         if (s->buffered_pkt.size <= 0) {
             av_packet_unref(&s->buffered_pkt);
 
             /* no more data */
             if (av_fifo_size(s->fifo) < sizeof(AVPacket)) {
-                return avpkt->size ? avpkt->size :
-                    ff_mediacodec_dec_decode(avctx, s->ctx, frame, got_frame, avpkt);
+                return pkt_size ? AVERROR(EAGAIN) :
+                    ff_mediacodec_dec_decode(avctx, s->ctx, frame, &got_frame, avpkt);
             }
 
             av_fifo_generic_read(s->fifo, &s->buffered_pkt, sizeof(s->buffered_pkt), NULL);
         }
 
-        ret = mediacodec_process_data(avctx, frame, got_frame, &s->buffered_pkt);
+        ret = mediacodec_process_data(avctx, frame, &got_frame, &s->buffered_pkt);
         if (ret < 0)
             return ret;
 
@@ -497,7 +505,10 @@ static int mediacodec_decode_frame(AVCodecContext *avctx, void *data,
         s->buffered_pkt.data += ret;
     }
 
-    return avpkt->size;
+    if (got_frame)
+        return 0;
+
+    return AVERROR(EAGAIN);
 }
 
 static void mediacodec_decode_flush(AVCodecContext *avctx)
@@ -537,7 +548,7 @@ AVCodec ff_h264_mediacodec_decoder = {
     .id             = AV_CODEC_ID_H264,
     .priv_data_size = sizeof(MediaCodecH264DecContext),
     .init           = mediacodec_decode_init,
-    .decode         = mediacodec_decode_frame,
+    .receive_frame  = mediacodec_receive_frame,
     .flush          = mediacodec_decode_flush,
     .close          = mediacodec_decode_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE,
@@ -556,7 +567,7 @@ AVCodec ff_hevc_mediacodec_decoder = {
     .id             = AV_CODEC_ID_HEVC,
     .priv_data_size = sizeof(MediaCodecH264DecContext),
     .init           = mediacodec_decode_init,
-    .decode         = mediacodec_decode_frame,
+    .receive_frame  = mediacodec_receive_frame,
     .flush          = mediacodec_decode_flush,
     .close          = mediacodec_decode_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE,
@@ -575,7 +586,7 @@ AVCodec ff_mpeg2_mediacodec_decoder = {
     .id             = AV_CODEC_ID_MPEG2VIDEO,
     .priv_data_size = sizeof(MediaCodecH264DecContext),
     .init           = mediacodec_decode_init,
-    .decode         = mediacodec_decode_frame,
+    .receive_frame  = mediacodec_receive_frame,
     .flush          = mediacodec_decode_flush,
     .close          = mediacodec_decode_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE,
@@ -593,7 +604,7 @@ AVCodec ff_mpeg4_mediacodec_decoder = {
     .id             = AV_CODEC_ID_MPEG4,
     .priv_data_size = sizeof(MediaCodecH264DecContext),
     .init           = mediacodec_decode_init,
-    .decode         = mediacodec_decode_frame,
+    .receive_frame  = mediacodec_receive_frame,
     .flush          = mediacodec_decode_flush,
     .close          = mediacodec_decode_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE,
@@ -611,7 +622,7 @@ AVCodec ff_vp8_mediacodec_decoder = {
     .id             = AV_CODEC_ID_VP8,
     .priv_data_size = sizeof(MediaCodecH264DecContext),
     .init           = mediacodec_decode_init,
-    .decode         = mediacodec_decode_frame,
+    .receive_frame  = mediacodec_receive_frame,
     .flush          = mediacodec_decode_flush,
     .close          = mediacodec_decode_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE,
@@ -629,7 +640,7 @@ AVCodec ff_vp9_mediacodec_decoder = {
     .id             = AV_CODEC_ID_VP9,
     .priv_data_size = sizeof(MediaCodecH264DecContext),
     .init           = mediacodec_decode_init,
-    .decode         = mediacodec_decode_frame,
+    .receive_frame  = mediacodec_receive_frame,
     .flush          = mediacodec_decode_flush,
     .close          = mediacodec_decode_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE,
