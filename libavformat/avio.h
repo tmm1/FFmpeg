@@ -349,6 +349,12 @@ typedef struct AVIOContext {
      * Try to buffer at least this amount of data before flushing it
      */
     int min_packet_size;
+
+    /**
+     * Make a new request on the underlying http connection.
+     * This is internal only, do not use from outside.
+     */
+    int (*new_http_request)(struct AVIOContext *pb, const char *uri);
 } AVIOContext;
 
 /**

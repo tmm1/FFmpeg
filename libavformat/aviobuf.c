@@ -922,6 +922,14 @@ static int64_t io_read_seek(void *opaque, int stream_index, int64_t timestamp, i
     return internal->h->prot->url_read_seek(internal->h, stream_index, timestamp, flags);
 }
 
+static int io_new_http_request(AVIOContext *s, const char *uri)
+{
+    URLContext *uc = ffio_geturlcontext(s);
+    if (!uc)
+        return AVERROR(ENOSYS);
+    return uc->prot->url_new_http_request(uc, uri);
+}
+
 int ffio_fdopen(AVIOContext **s, URLContext *h)
 {
     AVIOInternal *internal = NULL;
@@ -970,6 +978,8 @@ int ffio_fdopen(AVIOContext **s, URLContext *h)
 
         if (h->prot->url_read_seek)
             (*s)->seekable |= AVIO_SEEKABLE_TIME;
+        if (h->prot->url_new_http_request)
+            (*s)->new_http_request = io_new_http_request;
     }
     (*s)->short_seek_get = io_short_seek;
     (*s)->av_class = &ff_avio_class;

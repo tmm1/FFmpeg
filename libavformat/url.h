@@ -62,6 +62,7 @@ typedef struct URLProtocol {
     int     (*url_open2)(URLContext *h, const char *url, int flags, AVDictionary **options);
     int     (*url_accept)(URLContext *s, URLContext **c);
     int     (*url_handshake)(URLContext *c);
+    int     (*url_new_http_request)(URLContext *h, const char *uri);
 
     /**
      * Read data from the protocol.
