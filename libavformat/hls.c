@@ -26,7 +26,6 @@
  * http://tools.ietf.org/html/draft-pantos-http-live-streaming
  */
 
-#include "libavformat/http.h"
 #include "libavutil/avstring.h"
 #include "libavutil/avassert.h"
 #include "libavutil/intreadwrite.h"
@@ -611,19 +610,13 @@ static void update_options(char **dest, const char *name, void *src)
 static int open_url_keepalive(AVFormatContext *s, AVIOContext **pb,
                               const char *url)
 {
-#if !CONFIG_HTTP_PROTOCOL
-    return AVERROR_PROTOCOL_NOT_FOUND;
-#else
     int ret;
-    URLContext *uc = ffio_geturlcontext(*pb);
-    av_assert0(uc);
     (*pb)->eof_reached = 0;
-    ret = ff_http_do_new_request(uc, url);
+    ret = (*pb)->new_http_request(*pb, url);
     if (ret < 0) {
         ff_format_io_close(s, pb);
     }
     return ret;
-#endif
 }
 
 static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
@@ -670,7 +663,7 @@ static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
     else if (strcmp(proto_name, "file") || !strncmp(url, "file,", 5))
         return AVERROR_INVALIDDATA;
 
-    if (is_http && c->http_persistent && *pb) {
+    if (c->http_persistent && *pb && (*pb)->new_http_request) {
         ret = open_url_keepalive(c->ctx, pb, url);
         if (ret == AVERROR_EXIT) {
             return ret;
@@ -725,9 +718,9 @@ static int parse_playlist(HLSContext *c, const char *url,
     struct variant_info variant_info;
     char tmp_str[MAX_URL_SIZE];
     struct segment *cur_init_section = NULL;
-    int is_http = av_strstart(url, "http", NULL);
 
-    if (is_http && !in && c->http_persistent && c->playlist_pb) {
+    if (!in && c->http_persistent &&
+        c->playlist_pb && c->playlist_pb->new_http_request) {
         in = c->playlist_pb;
         ret = open_url_keepalive(c->ctx, &c->playlist_pb, url);
         if (ret == AVERROR_EXIT) {
@@ -761,7 +754,7 @@ static int parse_playlist(HLSContext *c, const char *url,
         if (ret < 0)
             return ret;
 
-        if (is_http && c->http_persistent)
+        if (c->http_persistent && in && in->new_http_request)
             c->playlist_pb = in;
         else
             close_in = 1;
@@ -1511,7 +1504,7 @@ reload:
 
         return ret;
     }
-    if (c->http_persistent && av_strstart(seg->url, "http", NULL)) {
+    if (c->http_persistent && v->input && v->input->new_http_request) {
         v->input_read_done = 1;
     } else {
         ff_format_io_close(v->parent, &v->input);
