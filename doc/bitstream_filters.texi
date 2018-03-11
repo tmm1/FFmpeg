@@ -274,7 +274,56 @@ For example, @samp{086f3693-b7b3-4f2c-9653-21492feee5b8+hello} will
 insert the string ``hello'' associated with the given UUID.
 
 @item delete_filler
-Deletes both filler NAL units and filler SEI messages.
+Delete all filler in the stream: both filler data NAL units and
+filler payload SEI messages.
+
+Filler zero bytes between NAL units in Annex B format (leading_zero_8bits
+and trailing_zero_8bits) will be discarded from the stream with or
+without this option - as such, HRD parameters are not expected to be
+accurate after any rewriting transformation made by this filter.
+
+@item display_orientation
+Modify display orientation SEI messages.
+
+@table @samp
+@item insert
+Insert new display orientation messages, overwriting any currently in
+the stream.  The new value is taken from the packet side data, modified
+by the @option{rotate} and @option{flip} options.
+
+@item remove
+Remove all display orientation messages from the stream.
+
+@item extract
+Extract display orientation messages so that they are available as
+packet side data.
+@end table
+
+@item rotate
+Set the rotation angle in the display orientation data.  This is an
+anticlockwise rotation angle in degrees.
+@item flip
+Set the flip fields in the display orientation data.  This can be any
+combination of the flags:
+@table @samp
+@item horizontal
+@item vertical
+@end table
+
+@item a53_cc
+Modify A/53 closed caption data in SEI messages.
+
+@table @samp
+@item insert
+Insert closed captions taken from packet side data into the stream.
+
+@item remove
+Remove all closed caption data from the stream.
+
+@item extract
+Extract closed captions from the stream so that they are available as
+as packet side data.
+@end table
 
 @item level
 Set the level in the SPS.  Refer to H.264 section A.3 and tables A-1
