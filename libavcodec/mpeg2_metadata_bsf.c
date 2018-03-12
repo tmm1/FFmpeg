@@ -255,7 +255,7 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *out)
             if (err)
                 goto fail;
             memcpy(a53_side_data + a53_side_data_size,
-                   ud->user_data + 9, 3 * count);
+                   ud->user_data + 7, 3 * count);
             a53_side_data_size += 3 * count;
         }
     }
