@@ -362,6 +362,18 @@ table 6-6).
 Set the colour description in the stream (see H.262 section 6.3.6
 and tables 6-7, 6-8 and 6-9).
 
+@item a53_cc
+Modify A/53 closed caption data in user data messages.
+
+@table @samp
+@item remove
+Remove all closed caption data from the stream.
+
+@item extract
+Extract closed captions from the stream so that they are available as
+as packet side data.
+@end table
+
 @end table
 
 @section mpeg4_unpack_bframes

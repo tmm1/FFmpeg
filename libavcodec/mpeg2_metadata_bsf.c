@@ -25,6 +25,12 @@
 #include "cbs_mpeg2.h"
 #include "mpeg12.h"
 
+enum {
+    PASS,
+    REMOVE,
+    EXTRACT,
+};
+
 typedef struct MPEG2MetadataContext {
     const AVClass *class;
 
@@ -43,6 +49,7 @@ typedef struct MPEG2MetadataContext {
     int matrix_coefficients;
 
     int mpeg1_warned;
+    int a53_cc;
 } MPEG2MetadataContext;
 
 
@@ -184,7 +191,9 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *out)
     MPEG2MetadataContext *ctx = bsf->priv_data;
     AVPacket *in = NULL;
     CodedBitstreamFragment *frag = &ctx->fragment;
-    int err;
+    int err, i;
+    uint8_t *a53_side_data = NULL;
+    size_t a53_side_data_size = 0;
 
     err = ff_bsf_get_packet(bsf, &in);
     if (err < 0)
@@ -202,6 +211,55 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *out)
         goto fail;
     }
 
+    if (ctx->a53_cc == REMOVE || ctx->a53_cc == EXTRACT) {
+        for (i = 0; i < frag->nb_units; i++) {
+            MPEG2RawUserData *ud = NULL;
+                uint32_t tag;
+                uint8_t type_code, count;
+
+            if (frag->units[i].type != MPEG2_START_USER_DATA)
+                continue;
+            ud = frag->units[i].content;
+            if (ud->user_data_length < 6)
+                continue;
+            tag = AV_RB32(ud->user_data);
+            type_code = ud->user_data[4];
+            if (tag != MKBETAG('G', 'A', '9', '4') || type_code != 3)
+                continue;
+
+            if (ctx->a53_cc == REMOVE) {
+                err = ff_cbs_delete_unit(ctx->cbc, frag, i);
+                if (err < 0) {
+                    av_log(bsf, AV_LOG_ERROR, "Failed to delete "
+                           "A53 CC USER_DATA message.\n");
+                    goto fail;
+                }
+                av_log(bsf, AV_LOG_WARNING, "A53 CC remove!.\n");
+
+                --i;
+                break;
+            }
+
+            // Extract.
+            count = ud->user_data[5] & 0x1f;
+            if (3 * count + 8 > ud->user_data_length) {
+                av_log(bsf, AV_LOG_ERROR, "Invalid A/53 closed caption "
+                       "data: count %d overflows length %zu.\n",
+                       count, ud->user_data_length);
+                continue;
+            }
+            av_log(bsf, AV_LOG_WARNING, "A53 CC extract: %zu bytes.\n", ud->user_data_length);
+
+            err = av_reallocp(&a53_side_data,
+                              a53_side_data_size + 3 * count);
+            if (err)
+                goto fail;
+            memcpy(a53_side_data + a53_side_data_size,
+                   ud->user_data + 9, 3 * count);
+            a53_side_data_size += 3 * count;
+        }
+    }
+
     err = ff_cbs_write_packet(ctx->cbc, out, frag);
     if (err < 0) {
         av_log(bsf, AV_LOG_ERROR, "Failed to write packet.\n");
@@ -214,9 +272,21 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *out)
         goto fail;
     }
 
+    if (a53_side_data) {
+        err = av_packet_add_side_data(out, AV_PKT_DATA_A53_CC,
+                                      a53_side_data, a53_side_data_size);
+        if (err) {
+            av_log(bsf, AV_LOG_ERROR, "Failed to attach extracted A/53 "
+                   "side data to packet.\n");
+            goto fail;
+        }
+        a53_side_data = NULL;
+    }
+
     err = 0;
 fail:
     ff_cbs_fragment_uninit(ctx->cbc, frag);
+    av_freep(&a53_side_data);
 
     av_packet_free(&in);
 
@@ -287,6 +357,13 @@ static const AVOption mpeg2_metadata_options[] = {
     { "matrix_coefficients", "Set matrix coefficients (table 6-9)",
         OFFSET(matrix_coefficients), AV_OPT_TYPE_INT,
         { .i64 = -1 }, -1, 255 },
+
+    { "a53_cc", "A/53 Closed Captions in SEI NAL units",
+        OFFSET(a53_cc), AV_OPT_TYPE_INT,
+        { .i64 = PASS }, PASS, EXTRACT, 0, "a53_cc" },
+    { "pass",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PASS    }, .unit = "a53_cc" },
+    { "remove",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = REMOVE  }, .unit = "a53_cc" },
+    { "extract", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = EXTRACT }, .unit = "a53_cc" },
 
     { NULL }
 };
