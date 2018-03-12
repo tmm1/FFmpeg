@@ -234,7 +234,7 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *out)
                            "A53 CC USER_DATA message.\n");
                     goto fail;
                 }
-                av_log(bsf, AV_LOG_WARNING, "A53 CC remove!.\n");
+                av_log(bsf, AV_LOG_TRACE, "A53 CC remove!.\n");
 
                 --i;
                 break;
@@ -248,7 +248,7 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *out)
                        count, ud->user_data_length);
                 continue;
             }
-            av_log(bsf, AV_LOG_WARNING, "A53 CC extract: %zu bytes.\n", ud->user_data_length);
+            av_log(bsf, AV_LOG_TRACE, "A53 CC extract: %zu bytes.\n", ud->user_data_length);
 
             err = av_reallocp(&a53_side_data,
                               a53_side_data_size + 3 * count);
