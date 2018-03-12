@@ -2762,7 +2762,7 @@ int ff_h264_execute_decode_slices(H264Context *h)
 
             sl                 = &h->slice_ctx[i];
             if (CONFIG_ERROR_RESILIENCE) {
-                sl->er.error_count = 0;
+                sl->er.error_count = ATOMIC_VAR_INIT(0);
             }
 
             /* make sure none of those slices overlap */
@@ -2786,7 +2786,8 @@ int ff_h264_execute_decode_slices(H264Context *h)
         h->mb_y              = sl->mb_y;
         if (CONFIG_ERROR_RESILIENCE) {
             for (i = 1; i < context_count; i++)
-                h->slice_ctx[0].er.error_count += h->slice_ctx[i].er.error_count;
+                atomic_fetch_add(&h->slice_ctx[0].er.error_count,
+                                 atomic_load(&h->slice_ctx[i].er.error_count));
         }
 
         if (h->postpone_filter) {

@@ -1992,7 +1992,8 @@ static int slice_decode_thread(AVCodecContext *c, void *arg)
     int mb_y            = s->start_mb_y;
     const int field_pic = s->picture_structure != PICT_FRAME;
 
-    s->er.error_count = (3 * (s->end_mb_y - s->start_mb_y) * s->mb_width) >> field_pic;
+    s->er.error_count = ATOMIC_VAR_INIT(
+        (3 * (s->end_mb_y - s->start_mb_y) * s->mb_width) >> field_pic);
 
     for (;;) {
         uint32_t start_code;
@@ -2002,7 +2003,7 @@ static int slice_decode_thread(AVCodecContext *c, void *arg)
         emms_c();
         ff_dlog(c, "ret:%d resync:%d/%d mb:%d/%d ts:%d/%d ec:%d\n",
                 ret, s->resync_mb_x, s->resync_mb_y, s->mb_x, s->mb_y,
-                s->start_mb_y, s->end_mb_y, s->er.error_count);
+                s->start_mb_y, s->end_mb_y, atomic_load(&s->er.error_count));
         if (ret < 0) {
             if (c->err_recognition & AV_EF_EXPLODE)
                 return ret;
@@ -2485,7 +2486,8 @@ static int decode_chunks(AVCodecContext *avctx, AVFrame *picture,
                                    &s2->thread_context[0], NULL,
                                    s->slice_count, sizeof(void *));
                     for (i = 0; i < s->slice_count; i++)
-                        s2->er.error_count += s2->thread_context[i]->er.error_count;
+                        atomic_fetch_add(&s2->er.error_count,
+                            atomic_load(&s2->thread_context[i]->er.error_count));
                 }
 
                 ret = slice_end(avctx, picture);
@@ -2499,7 +2501,8 @@ static int decode_chunks(AVCodecContext *avctx, AVFrame *picture,
             }
             s2->pict_type = 0;
 
-            if (avctx->err_recognition & AV_EF_EXPLODE && s2->er.error_count)
+            if (avctx->err_recognition & AV_EF_EXPLODE &&
+                atomic_load(&s2->er.error_count))
                 return AVERROR_INVALIDDATA;
 
             return FFMAX(0, buf_ptr - buf - s2->parse_context.last_index);
@@ -2553,7 +2556,8 @@ static int decode_chunks(AVCodecContext *avctx, AVFrame *picture,
                                s2->thread_context, NULL,
                                s->slice_count, sizeof(void *));
                 for (i = 0; i < s->slice_count; i++)
-                    s2->er.error_count += s2->thread_context[i]->er.error_count;
+                    atomic_fetch_add(&s2->er.error_count,
+                        atomic_load(&s2->thread_context[i]->er.error_count));
                 s->slice_count = 0;
             }
             if (last_code == 0 || last_code == SLICE_MIN_START_CODE) {
