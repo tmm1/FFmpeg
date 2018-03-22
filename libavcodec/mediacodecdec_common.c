@@ -448,6 +448,7 @@ static int mediacodec_dec_flush_codec(AVCodecContext *avctx, MediaCodecDecContex
     s->eos = 0;
     atomic_fetch_add(&s->serial, 1);
     atomic_init(&s->hw_buffer_count, 0);
+    s->last_pts = AV_NOPTS_VALUE;
     s->current_input_buffer = -1;
 
     status = ff_AMediaCodec_flush(codec);
@@ -476,6 +477,7 @@ int ff_mediacodec_dec_init(AVCodecContext *avctx, MediaCodecDecContext *s,
     atomic_init(&s->refcount, 1);
     atomic_init(&s->hw_buffer_count, 0);
     atomic_init(&s->serial, 1);
+    s->last_pts = AV_NOPTS_VALUE;
     s->current_input_buffer = -1;
 
     pix_fmt = ff_get_format(avctx, pix_fmts);
@@ -609,6 +611,13 @@ int ff_mediacodec_dec_send(AVCodecContext *avctx, MediaCodecDecContext *s,
         }
 
         pts = pkt->pts;
+        if (pts == AV_NOPTS_VALUE && s->last_pts != AV_NOPTS_VALUE) {
+            pts = s->last_pts;
+        } else if (pts == AV_NOPTS_VALUE) {
+            av_log(avctx, AV_LOG_WARNING, "Packet is missing PTS!\n");
+            pts = 0;
+        }
+        s->last_pts = pkt->pts;
         if (pts != AV_NOPTS_VALUE && avctx->pkt_timebase.num && avctx->pkt_timebase.den) {
             pts = av_rescale_q(pts, avctx->pkt_timebase, AV_TIME_BASE_Q);
         }

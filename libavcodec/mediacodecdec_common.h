@@ -69,6 +69,8 @@ typedef struct MediaCodecDecContext {
     bool delay_flush;
     atomic_int serial;
 
+    int64_t last_pts;
+
 } MediaCodecDecContext;
 
 int ff_mediacodec_dec_init(AVCodecContext *avctx,
