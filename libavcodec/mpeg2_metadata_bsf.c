@@ -22,8 +22,16 @@
 
 #include "bsf.h"
 #include "cbs.h"
+#include "cbs_misc.h"
 #include "cbs_mpeg2.h"
 #include "mpeg12.h"
+
+enum {
+    PASS,
+    INSERT,
+    REMOVE,
+    EXTRACT,
+};
 
 typedef struct MPEG2MetadataContext {
     const AVClass *class;
@@ -41,6 +49,8 @@ typedef struct MPEG2MetadataContext {
     int colour_primaries;
     int transfer_characteristics;
     int matrix_coefficients;
+
+    int a53_cc;
 
     int mpeg1_warned;
 } MPEG2MetadataContext;
@@ -173,7 +183,9 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
 {
     MPEG2MetadataContext *ctx = bsf->priv_data;
     CodedBitstreamFragment *frag = &ctx->fragment;
-    int err;
+    int err, i;
+    uint8_t *a53_side_data = NULL;
+    size_t a53_side_data_size = 0;
 
     err = ff_bsf_get_packet_ref(bsf, pkt);
     if (err < 0)
@@ -191,6 +203,57 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
         goto fail;
     }
 
+    if (ctx->a53_cc == REMOVE || ctx->a53_cc == EXTRACT) {
+        for (i = 0; i < frag->nb_units; i++) {
+            MPEG2RawUserData *ud;
+            A53UserData a53_ud;
+
+            if (frag->units[i].type != MPEG2_START_USER_DATA)
+                continue;
+            ud = frag->units[i].content;
+
+            err = ff_cbs_read_a53_user_data(ctx->cbc, &a53_ud, ud->user_data,
+                                            ud->user_data_length);
+            if (err < 0) {
+                // Invalid or something completely different.
+                continue;
+            }
+            if (a53_ud.user_identifier != A53_USER_IDENTIFIER_ATSC ||
+                a53_ud.atsc.user_data_type_code !=
+                    A53_USER_DATA_TYPE_CODE_CC_DATA) {
+                // Valid but something else (e.g. AFD).
+                continue;
+            }
+
+            if (ctx->a53_cc == REMOVE) {
+                ff_cbs_delete_unit(ctx->cbc, frag, i);
+                --i;
+                break;
+            } else if(ctx->a53_cc == EXTRACT) {
+                err = ff_cbs_write_a53_cc_side_data(ctx->cbc,
+                                                    &a53_side_data,
+                                                    &a53_side_data_size,
+                                                    &a53_ud);
+                if (err < 0) {
+                    av_log(bsf, AV_LOG_ERROR, "Failed to write "
+                           "A/53 user data for packet side data.\n");
+                    goto fail;
+                }
+
+                if (a53_side_data) {
+                    err = av_packet_add_side_data(pkt, AV_PKT_DATA_A53_CC,
+                                                  a53_side_data, a53_side_data_size);
+                    if (err) {
+                        av_log(bsf, AV_LOG_ERROR, "Failed to attach extracted A/53 "
+                               "side data to packet.\n");
+                        goto fail;
+                    }
+                    a53_side_data = NULL;
+                }
+            }
+        }
+    }
+
     err = ff_cbs_write_packet(ctx->cbc, pkt, frag);
     if (err < 0) {
         av_log(bsf, AV_LOG_ERROR, "Failed to write packet.\n");
@@ -200,6 +263,7 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
     err = 0;
 fail:
     ff_cbs_fragment_reset(ctx->cbc, frag);
+    av_freep(&a53_side_data);
 
     if (err < 0)
         av_packet_unref(pkt);
@@ -286,6 +350,16 @@ static const AVOption mpeg2_metadata_options[] = {
     { "matrix_coefficients", "Set matrix coefficients (table 6-9)",
         OFFSET(matrix_coefficients), AV_OPT_TYPE_INT,
         { .i64 = -1 }, -1, 255, FLAGS },
+
+    { "a53_cc", "A/53 Closed Captions in user data",
+        OFFSET(a53_cc), AV_OPT_TYPE_INT,
+        { .i64 = PASS }, PASS, EXTRACT, FLAGS, "a53_cc" },
+    { "pass",    NULL, 0, AV_OPT_TYPE_CONST,
+        { .i64 = PASS    }, .flags = FLAGS, .unit = "a53_cc" },
+    { "remove",  NULL, 0, AV_OPT_TYPE_CONST,
+        { .i64 = REMOVE  }, .flags = FLAGS, .unit = "a53_cc" },
+    { "extract", NULL, 0, AV_OPT_TYPE_CONST,
+        { .i64 = EXTRACT }, .flags = FLAGS, .unit = "a53_cc" },
 
     { NULL }
 };
