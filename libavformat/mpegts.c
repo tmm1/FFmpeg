@@ -143,6 +143,7 @@ struct MpegTSContext {
 
     int skip_changes;
     int skip_clear;
+    int skip_unknown_pids;
 
     int scan_all_pmts;
 
@@ -175,6 +176,8 @@ static const AVOption options[] = {
     {"skip_changes", "skip changing / adding streams / programs", offsetof(MpegTSContext, skip_changes), AV_OPT_TYPE_BOOL,
      {.i64 = 0}, 0, 1, 0 },
     {"skip_clear", "skip clearing programs", offsetof(MpegTSContext, skip_clear), AV_OPT_TYPE_BOOL,
+     {.i64 = 0}, 0, 1, 0 },
+    {"skip_unknown_pids", "skip streams not advertised in PMT", offsetof(MpegTSContext, skip_unknown_pids), AV_OPT_TYPE_BOOL,
      {.i64 = 0}, 0, 1, 0 },
     { NULL },
 };
@@ -1058,7 +1061,7 @@ static int mpegts_push_data(MpegTSFilter *filter,
 
                     /* stream not present in PMT */
                     if (!pes->st) {
-                        if (ts->skip_changes)
+                        if (ts->skip_changes || ts->skip_unknown_pids)
                             goto skip;
 
                         pes->st = avformat_new_stream(ts->stream, NULL);
@@ -2011,6 +2014,8 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     if (!ts->scan_all_pmts && ts->skip_changes)
         return;
 
+    if (ts->skip_unknown_pids && !get_program(ts, h->id))
+        return;
     if (!ts->skip_clear)
         clear_program(ts, h->id);
 
