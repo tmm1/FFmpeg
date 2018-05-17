@@ -181,6 +181,9 @@ Default is 0.
 @item correct_ts_overflow @var{integer} (@emph{input})
 Correct single timestamp overflows if set to 1. Default is 1.
 
+@item remove_ts_discont @var{integer} (@emph{input})
+Remove timestamp discontinuities if set to 1. Default is 0.
+
 @item flush_packets @var{integer} (@emph{output})
 Flush the underlying I/O stream after each packet. Default is -1 (auto), which
 means that the underlying protocol will decide, 1 enables it, and has the

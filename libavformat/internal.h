@@ -192,6 +192,11 @@ struct AVStreamInternal {
     int need_context_update;
 
     FFFrac *priv_pts;
+
+    /**
+     * The format context which owns this stream.
+     */
+    AVFormatContext *fmtctx;
 };
 
 #ifdef __GNUC__

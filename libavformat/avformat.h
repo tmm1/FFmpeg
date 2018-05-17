@@ -807,6 +807,18 @@ typedef struct AVIndexEntry {
     int min_distance;         /**< Minimum distance between this and the previous keyframe, used to avoid unneeded searching. */
 } AVIndexEntry;
 
+typedef struct AVDiscontinuity {
+    int64_t min_pos;
+    int64_t max_pos;
+
+    int64_t min_pts;
+    int64_t max_pts;
+
+    int64_t offset_pts;
+
+    int guessed:1;
+} AVDiscontinuity;
+
 #define AV_DISPOSITION_DEFAULT   0x0001
 #define AV_DISPOSITION_DUB       0x0002
 #define AV_DISPOSITION_ORIGINAL  0x0004
@@ -1067,6 +1079,7 @@ typedef struct AVStream {
     int64_t cur_dts;
     int64_t last_IP_pts;
     int last_IP_duration;
+    int64_t frame_duration;
 
     /**
      * Number of packets to buffer for codec probing
@@ -1919,6 +1932,17 @@ typedef struct AVFormatContext {
      * - decoding: set by user
      */
     char *protocol_blacklist;
+
+    /**
+     * Remove timestamp discontinuities (on AVFMT_TS_DISCONT formats).
+     * - encoding: unused
+     * - decoding: Set by user
+     */
+    unsigned int remove_ts_discont;
+    AVDiscontinuity *ts_disconts; /**< Only used if remove_ts_discont=1 **/
+    unsigned int nb_ts_disconts;
+    unsigned int ts_disconts_allocated_size;
+    int curr_ts_discont_idx;
 
     /**
      * The maximum number of streams.

@@ -96,6 +96,171 @@ static int is_relative(int64_t ts) {
     return ts > (RELATIVE_TS_BASE - (1LL<<48));
 }
 
+static int ts_discont_calculate_offset(AVDiscontinuity *td, AVDiscontinuity *prev,
+                                       AVDiscontinuity *bitrate, AVRational tb)
+{
+    int64_t prev_offset = prev->offset_pts + prev->max_pts;
+    int64_t offset_sequential = td->min_pts - prev->max_pts;   // assume linear timeline
+    int64_t offset_via_bitrate = (td->min_pos - prev->max_pos) *  // assume cbr
+                                 (bitrate->max_pts - bitrate->min_pts) /
+                                 (bitrate->max_pos - bitrate->min_pos);
+    av_log(NULL, AV_LOG_ERROR, "offset: sequential=%"PRId64" via_bitrate=%"PRId64"\n",
+            offset_sequential, offset_via_bitrate);
+    if (offset_sequential > 0 && (offset_sequential * 100) / offset_via_bitrate >= 95) {
+        td->offset_pts = prev_offset + offset_sequential - td->min_pts;
+        td->guessed = 0;
+    } else {
+        td->offset_pts = prev_offset + offset_via_bitrate;
+        td->guessed = av_rescale_q(offset_via_bitrate, tb, AV_TIME_BASE_Q) > 1*AV_TIME_BASE;
+    }
+    return 0;
+}
+
+static void ts_discont_print(AVFormatContext *s, AVStream *st)
+{
+    for (int i = 0; i < s->nb_ts_disconts; i++) {
+        AVDiscontinuity *td = &s->ts_disconts[i];
+        av_log(s, AV_LOG_ERROR, "discont[%d]: pos=[%d, %d] pts=[%s, %s] offset=%s%s\n",
+               i, td->min_pos, td->max_pos,
+               av_ts2timestr(td->min_pts, &st->time_base),
+               av_ts2timestr(td->max_pts, &st->time_base),
+               av_ts2timestr(td->offset_pts, &st->time_base),
+               td->guessed ? " [?]" : "");
+    }
+}
+
+static int ts_discont_insert(AVFormatContext *s, AVPacket *pkt)
+{
+    AVStream *st = s->streams[pkt->stream_index];
+    AVDiscontinuity *ts_disconts, *td;
+    int i, idx, num, den;
+
+    ts_disconts = av_fast_realloc(s->ts_disconts,
+                                  &s->ts_disconts_allocated_size,
+                                  (s->nb_ts_disconts + 1) *
+                                  sizeof(AVDiscontinuity));
+    if (!ts_disconts)
+        return -1;
+
+    s->ts_disconts = ts_disconts;
+
+    idx = s->nb_ts_disconts;
+    for (i = 0; i < s->nb_ts_disconts; i++) {
+        AVDiscontinuity *tdi = &s->ts_disconts[i];
+        if (pkt->pos < tdi->min_pos)
+            break;
+    }
+    idx = i;
+    if (idx == s->nb_ts_disconts) {
+        idx = s->nb_ts_disconts++;
+    } else {
+        memmove(ts_disconts + idx + 1, ts_disconts + idx,
+                sizeof(AVDiscontinuity) * (s->nb_ts_disconts - idx));
+        s->nb_ts_disconts++;
+    }
+
+    td = &s->ts_disconts[idx];
+    td->min_pos = pkt->pos;
+    td->max_pos = pkt->pos + pkt->size;
+    td->min_pts = td->max_pts = pkt->pts;
+    s->curr_ts_discont_idx = idx;
+
+    if (idx == 0) {
+        int64_t start_offset = av_rescale_q(1*AV_TIME_BASE, AV_TIME_BASE_Q, st->time_base);
+        td->offset_pts = -td->min_pts + start_offset;
+    } else {
+        AVDiscontinuity *prev = &s->ts_disconts[idx-1];
+        ts_discont_calculate_offset(td, prev, prev, st->time_base);
+        if (idx+1 < s->nb_ts_disconts) {
+            AVDiscontinuity *next = &s->ts_disconts[idx+1];
+            if (next->guessed) {
+                ts_discont_calculate_offset(next, td, prev, st->time_base);
+            }
+        }
+    }
+
+    // av_log(s, AV_LOG_ERROR, "added discontinuity @ pos=%"PRId64" ts=%s (%"PRId64")\n",
+    //        pkt->pos, av_ts2timestr(pkt->pts, &st->time_base), pkt->pts);
+    ts_discont_print(s, st);
+
+    return 0;
+}
+
+static int ts_discont_is_discontinuity(int64_t pts1, int64_t pts2, AVRational tb)
+{
+    int64_t threshold = av_rescale_q(10*AV_TIME_BASE, AV_TIME_BASE_Q, tb); // 10s
+    return pts1 > pts2 + threshold ||
+           pts1 < pts2 - threshold;
+}
+
+static AVDiscontinuity *ts_discont_current(AVFormatContext *s, AVStream *st,
+                                           int *index, int64_t pos, int64_t pts)
+{
+    int i, idx = s->nb_ts_disconts-1;
+    for (i = 0; i < s->nb_ts_disconts; i++) {
+        AVDiscontinuity *td = &s->ts_disconts[i];
+        if (pos < td->min_pos) {
+            if (!ts_discont_is_discontinuity(pts, td->min_pts, st->time_base))
+                idx = i;
+            else
+                idx = i-1;
+            break;
+        }
+    }
+    if (index)
+        *index = idx;
+    if (idx < 0)
+        return NULL;
+    return &s->ts_disconts[idx];
+}
+
+static int ts_discont_process(AVFormatContext *s, AVPacket *pkt)
+{
+    AVDiscontinuity *td;
+    AVStream *st = s->streams[pkt->stream_index];
+    int idx = -1;
+
+    if (pkt->pos <= 0 || pkt->pts == AV_NOPTS_VALUE || (pkt->flags & AV_PKT_FLAG_CORRUPT))
+        return 0;
+
+    if (s->nb_ts_disconts == 0)
+        return ts_discont_insert(s, pkt);
+
+    td = ts_discont_current(s, st, &idx, pkt->pos, pkt->pts);
+    if (!td) {
+        av_log(s, AV_LOG_WARNING, "no AVDiscontinuity found for pos=%"PRId64" pts=%s\n",
+               pkt->pos, av_ts2timestr(pkt->pts, &st->time_base));
+        return -1;
+    }
+
+    if (pkt->pos < td->min_pos && pkt->pts < td->min_pts) {
+        td->min_pts = pkt->pts;
+        td->min_pos = pkt->pos;
+        ts_discont_print(s, st);
+    }
+
+    if (pkt->pos > td->max_pos &&
+        ts_discont_is_discontinuity(pkt->pts, td->max_pts, st->time_base)) {
+        av_log(s, AV_LOG_ERROR, "detected discontinuity @ pos=%"PRId64" stream=%d : %s -> %s (%"PRId64" -> %"PRId64")\n",
+               pkt->pos, pkt->stream_index,
+               av_ts2timestr(td->max_pts, &st->time_base),
+               av_ts2timestr(pkt->pts, &st->time_base),
+               td->max_pts, pkt->pts);
+        return ts_discont_insert(s, pkt);
+    } else if (pkt->pts > td->max_pts) {
+        td->max_pts = pkt->pts;
+        td->max_pos = pkt->pos + pkt->size;
+    }
+
+    if (td->guessed && idx > 0) {
+        AVDiscontinuity *prev = &s->ts_disconts[idx-1];
+        ts_discont_calculate_offset(td, prev, prev, st->time_base);
+        ts_discont_print(s, st);
+    }
+
+    return 0;
+}
+
 /**
  * Wrap a given time stamp, if there is an indication for an overflow
  *
@@ -103,9 +268,16 @@ static int is_relative(int64_t ts) {
  * @param timestamp the time stamp to wrap
  * @return resulting time stamp
  */
-static int64_t wrap_timestamp(const AVStream *st, int64_t timestamp)
+static int64_t wrap_timestamp(AVFormatContext *s, const AVStream *st,
+                              int64_t timestamp, int64_t pos)
 {
-    if (st->pts_wrap_behavior != AV_PTS_WRAP_IGNORE &&
+    if (s->remove_ts_discont) {
+        AVDiscontinuity *td = ts_discont_current(s, st, NULL, pos, timestamp);
+        if (td) {
+            return timestamp + td->offset_pts +
+                   (s->nb_ts_disconts * st->frame_duration);
+        }
+    } else if (st->pts_wrap_behavior != AV_PTS_WRAP_IGNORE &&
         st->pts_wrap_reference != AV_NOPTS_VALUE && timestamp != AV_NOPTS_VALUE) {
         if (st->pts_wrap_behavior == AV_PTS_WRAP_ADD_OFFSET &&
             timestamp < st->pts_wrap_reference)
@@ -892,18 +1064,21 @@ int ff_read_packet(AVFormatContext *s, AVPacket *pkt)
 
         st = s->streams[pkt->stream_index];
 
-        if (update_wrap_reference(s, st, pkt->stream_index, pkt) && st->pts_wrap_behavior == AV_PTS_WRAP_SUB_OFFSET) {
+        if (s->remove_ts_discont && (s->iformat->flags & AVFMT_TS_DISCONT)) {
+            ts_discont_process(s, pkt);
+        } else if (update_wrap_reference(s, st, pkt->stream_index, pkt) &&
+                   st->pts_wrap_behavior == AV_PTS_WRAP_SUB_OFFSET) {
             // correct first time stamps to negative values
             if (!is_relative(st->first_dts))
-                st->first_dts = wrap_timestamp(st, st->first_dts);
+                st->first_dts = wrap_timestamp(s, st, st->first_dts, 0);
             if (!is_relative(st->start_time))
-                st->start_time = wrap_timestamp(st, st->start_time);
+                st->start_time = wrap_timestamp(s, st, st->start_time, 0);
             if (!is_relative(st->cur_dts))
-                st->cur_dts = wrap_timestamp(st, st->cur_dts);
+                st->cur_dts = wrap_timestamp(s, st, st->cur_dts, 0);
         }
 
-        pkt->dts = wrap_timestamp(st, pkt->dts);
-        pkt->pts = wrap_timestamp(st, pkt->pts);
+        pkt->dts = wrap_timestamp(s, st, pkt->dts, pkt->pos);
+        pkt->pts = wrap_timestamp(s, st, pkt->pts, pkt->pos);
 
         force_codec_ids(s, st);
 
@@ -1308,6 +1483,7 @@ static void compute_pkt_fields(AVFormatContext *s, AVStream *st,
                                            num * (int64_t) st->time_base.den,
                                            den * (int64_t) st->time_base.num,
                                            AV_ROUND_DOWN);
+            st->frame_duration = pkt->duration;
         }
     }
 
@@ -2038,7 +2214,7 @@ int ff_add_index_entry(AVIndexEntry **index_entries,
 int av_add_index_entry(AVStream *st, int64_t pos, int64_t timestamp,
                        int size, int distance, int flags)
 {
-    timestamp = wrap_timestamp(st, timestamp);
+    timestamp = wrap_timestamp(st->internal->fmtctx, st, timestamp, pos);
     return ff_add_index_entry(&st->index_entries, &st->nb_index_entries,
                               &st->index_entries_allocated_size, pos,
                               timestamp, size, distance, flags);
@@ -2155,7 +2331,7 @@ static int64_t ff_read_timestamp(AVFormatContext *s, int stream_index, int64_t *
 {
     int64_t ts = read_timestamp(s, stream_index, ppos, pos_limit);
     if (stream_index >= 0)
-        ts = wrap_timestamp(s->streams[stream_index], ts);
+        ts = wrap_timestamp(s, s->streams[stream_index], ts, *ppos);
     return ts;
 }
 
@@ -4538,6 +4714,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     st->inject_global_side_data = s->internal->inject_global_side_data;
 
     st->internal->need_context_update = 1;
+    st->internal->fmtctx = s;
 
     s->streams[s->nb_streams++] = st;
     return st;
