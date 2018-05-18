@@ -311,7 +311,7 @@ static inline int parse_nal_units(AVCodecParserContext *s,
 
         buf_index += consumed;
 
-        ret = init_get_bits8(&nal.gb, nal.data, nal.size);
+        ret = init_get_bits(&nal.gb, nal.data, nal.size_bits);
         if (ret < 0)
             goto fail;
         get_bits1(&nal.gb);
