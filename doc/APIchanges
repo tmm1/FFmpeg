@@ -15,6 +15,9 @@ libavutil:     2017-10-21
 
 API changes, most recent first:
 
+2018-08-01 - xxxxxxxxxx - lavc 58.23.100 - mediacodec.h
+  Add av_mediacodec_render_buffer_at_time().
+
 2018-05-xx - xxxxxxxxxx - lavf 58.15.100 - avformat.h
   Add pmt_version field to AVProgram
 
