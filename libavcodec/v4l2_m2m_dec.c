@@ -253,6 +253,25 @@ static av_cold int v4l2_decode_close(AVCodecContext *avctx)
     return ff_v4l2_m2m_codec_end(priv);
 }
 
+static void v4l2_flush(AVCodecContext *avctx)
+{
+    V4L2m2mPriv *priv = avctx->priv_data;
+    V4L2m2mContext* s = priv->context;
+    int ret;
+
+    /* wait for pending buffer references */
+    if (atomic_load(&s->refcount))
+        while(sem_wait(&s->refsync) == -1 && errno == EINTR);
+
+    ret = ff_v4l2_context_set_status(&s->output, VIDIOC_STREAMOFF);
+    if (ret)
+        av_log(avctx, AV_LOG_ERROR, "VIDIOC_STREAMOFF %s\n", s->output.name);
+
+    ret = ff_v4l2_context_set_status(&s->capture, VIDIOC_STREAMOFF);
+    if (ret)
+        av_log(avctx, AV_LOG_ERROR, "VIDIOC_STREAMOFF %s\n", s->capture.name);
+}
+
 #define OFFSET(x) offsetof(V4L2m2mPriv, x)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
 
@@ -296,6 +315,7 @@ static const AVCodecHWConfigInternal *v4l2_m2m_hw_configs[] = {
         .init           = v4l2_decode_init, \
         .receive_frame  = v4l2_receive_frame, \
         .close          = v4l2_decode_close, \
+        .flush          = v4l2_flush, \
         .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_DRM_PRIME, \
                                                          AV_PIX_FMT_NV12, \
                                                          AV_PIX_FMT_YUV420P, \
