@@ -407,6 +407,7 @@ extern AVCodec ff_ac3_encoder;
 extern AVCodec ff_ac3_decoder;
 extern AVCodec ff_ac3_fixed_encoder;
 extern AVCodec ff_ac3_fixed_decoder;
+extern AVCodec ff_ac4_decoder;
 extern AVCodec ff_acelp_kelvin_decoder;
 extern AVCodec ff_alac_encoder;
 extern AVCodec ff_alac_decoder;
