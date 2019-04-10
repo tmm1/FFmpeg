@@ -2786,7 +2786,7 @@ static void estimate_timings_from_bit_rate(AVFormatContext *ic)
 #define DURATION_MAX_RETRY 6
 
 /* only usable for MPEG-PS streams */
-static void estimate_timings_from_pts(AVFormatContext *ic, int64_t old_offset)
+static void estimate_timings_from_pts(AVFormatContext *ic)
 {
     AVPacket pkt1, *pkt = &pkt1;
     AVStream *st;
@@ -2905,7 +2905,6 @@ static void estimate_timings_from_pts(AVFormatContext *ic, int64_t old_offset)
 skip_duration_calc:
     fill_all_stream_timings(ic);
 
-    avio_seek(ic->pb, old_offset, SEEK_SET);
     for (i = 0; i < ic->nb_streams; i++) {
         int j;
 
@@ -2918,7 +2917,7 @@ skip_duration_calc:
     }
 }
 
-static void estimate_timings(AVFormatContext *ic, int64_t old_offset)
+static void estimate_timings(AVFormatContext *ic)
 {
     int64_t file_size;
 
@@ -2934,7 +2933,7 @@ static void estimate_timings(AVFormatContext *ic, int64_t old_offset)
          !strcmp(ic->iformat->name, "mpegts")) &&
         file_size && (ic->pb->seekable & AVIO_SEEKABLE_NORMAL)) {
         /* get accurate estimate from the PTSes */
-        estimate_timings_from_pts(ic, old_offset);
+        estimate_timings_from_pts(ic);
         ic->duration_estimation_method = AVFMT_DURATION_FROM_PTS;
     } else if (has_duration(ic)) {
         /* at least one component has timings - we use them for all
@@ -4053,7 +4052,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     if (probesize)
-        estimate_timings(ic, old_offset);
+        estimate_timings(ic);
+    if ((ic->pb->seekable & AVIO_SEEKABLE_NORMAL))
+        avio_seek(ic->pb, old_offset, SEEK_SET);
 
     av_opt_set(ic, "skip_clear", "0", AV_OPT_SEARCH_CHILDREN);
 
