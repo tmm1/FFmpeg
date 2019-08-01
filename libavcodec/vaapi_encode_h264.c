@@ -39,6 +39,7 @@ enum {
     SEI_TIMING         = 0x01,
     SEI_IDENTIFIER     = 0x02,
     SEI_RECOVERY_POINT = 0x04,
+    SEI_A53_CC         = 0x08,
 };
 
 // Random (version 4) ISO 11578 UUID.
@@ -72,6 +73,7 @@ typedef struct VAAPIEncodeH264Context {
     int sei;
     int profile;
     int level;
+    int enable_a53_cc;
 
     // Derived settings.
     int mb_width;
@@ -98,6 +100,8 @@ typedef struct VAAPIEncodeH264Context {
     H264RawSEIRecoveryPoint        sei_recovery_point;
     H264RawSEIUserDataUnregistered sei_identifier;
     char                          *sei_identifier_string;
+    H264RawSEIUserDataRegistered   sei_a53cc;
+    void                          *sei_a53cc_data;
 
     int aud_needed;
     int sei_needed;
@@ -249,6 +253,11 @@ static int vaapi_encode_h264_write_extra_header(AVCodecContext *avctx,
         if (priv->sei_needed & SEI_RECOVERY_POINT) {
             sei->payload[i].payload_type = H264_SEI_TYPE_RECOVERY_POINT;
             sei->payload[i].payload.recovery_point = priv->sei_recovery_point;
+            ++i;
+        }
+        if (priv->sei_needed & SEI_A53_CC) {
+            sei->payload[i].payload_type = H264_SEI_TYPE_USER_DATA_REGISTERED;
+            sei->payload[i].payload.user_data_registered = priv->sei_a53cc;
             ++i;
         }
 
@@ -626,7 +635,8 @@ static int vaapi_encode_h264_init_picture_params(AVCodecContext *avctx,
     VAAPIEncodePicture              *prev = pic->prev;
     VAAPIEncodeH264Picture         *hprev = prev ? prev->priv_data : NULL;
     VAEncPictureParameterBufferH264 *vpic = pic->codec_picture_params;
-    int i;
+    int i, err;
+    size_t sei_a53cc_len;
 
     if (pic->type == PICTURE_TYPE_IDR) {
         av_assert0(pic->display_order == pic->encode_order);
@@ -698,6 +708,21 @@ static int vaapi_encode_h264_init_picture_params(AVCodecContext *avctx,
         };
 
         priv->sei_needed |= SEI_RECOVERY_POINT;
+    }
+
+    if (priv->enable_a53_cc) {
+        av_freep(&priv->sei_a53cc_data);
+        err = ff_alloc_a53_sei(pic->input_image, 0, &priv->sei_a53cc_data, &sei_a53cc_len);
+        if (err < 0)
+            return err;
+
+        if (priv->sei_a53cc_data) {
+            priv->sei_a53cc.itu_t_t35_country_code = 181;
+            priv->sei_a53cc.data = (uint8_t *)priv->sei_a53cc_data + 1;
+            priv->sei_a53cc.data_length = sei_a53cc_len - 1;
+
+            priv->sei_needed |= SEI_A53_CC;
+        }
     }
 
     vpic->CurrPic = (VAPictureH264) {
@@ -1245,6 +1270,7 @@ static av_cold int vaapi_encode_h264_close(AVCodecContext *avctx)
     ff_cbs_fragment_free(priv->cbc, &priv->current_access_unit);
     ff_cbs_close(&priv->cbc);
     av_freep(&priv->sei_identifier_string);
+    av_freep(&priv->sei_a53cc_data);
 
     return ff_vaapi_encode_close(avctx);
 }
@@ -1320,6 +1346,8 @@ static const AVOption vaapi_encode_h264_options[] = {
     { LEVEL("6.1", 61) },
     { LEVEL("6.2", 62) },
 #undef LEVEL
+
+    { "a53cc", "Use A53 Closed Captions (if available)", OFFSET(enable_a53_cc), AV_OPT_TYPE_BOOL, {.i64 = 1}, 0, 1, FLAGS },
 
     { NULL },
 };
