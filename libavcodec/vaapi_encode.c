@@ -236,6 +236,12 @@ static int vaapi_encode_issue(AVCodecContext *avctx,
 
     if (pic->type == PICTURE_TYPE_IDR) {
         for (i = 0; i < ctx->nb_global_params; i++) {
+            if (pic->encode_order != 0 &&
+                ctx->global_params_type[i] == VAEncMiscParameterTypeRateControl &&
+                ctx->va_rc_mode == VA_RC_VBR) {
+                // send VAEncMiscParameterTypeRateControl only once in VBR mode
+                continue;
+            }
             err = vaapi_encode_make_misc_param_buffer(avctx, pic,
                                                       ctx->global_params_type[i],
                                                       ctx->global_params[i],
