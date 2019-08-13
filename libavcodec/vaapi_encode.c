@@ -1665,6 +1665,9 @@ rc_mode_found:
     ctx->va_rc_mode  = rc_mode->va_mode;
     ctx->va_bit_rate = rc_bits_per_second;
 
+    if (ctx->va_rc_mode == VA_RC_VBR)
+        ctx->va_bit_rate = rc_bits_per_second * rc_target_percentage / 100;
+
     av_log(avctx, AV_LOG_VERBOSE, "RC mode: %s.\n", rc_mode->name);
     if (rc_attr.value == VA_ATTRIB_NOT_SUPPORTED) {
         // This driver does not want the RC mode attribute to be set.
