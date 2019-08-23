@@ -52,13 +52,17 @@ static inline void v4l2_set_pts(V4L2Buffer *out, int64_t pts)
 {
     V4L2m2mContext *s = buf_to_m2mctx(out);
     AVRational v4l2_timebase = { 1, USEC_PER_SEC };
+    AVRational timebase;
     int64_t v4l2_pts;
 
     if (pts == AV_NOPTS_VALUE)
         pts = 0;
 
+    timebase = s->filterctx ? s->filterctx->inputs[0]->time_base
+                            : s->avctx->time_base;
+
     /* convert pts to v4l2 timebase */
-    v4l2_pts = av_rescale_q(pts, s->avctx->time_base, v4l2_timebase);
+    v4l2_pts = av_rescale_q(pts, timebase, v4l2_timebase);
     out->buf.timestamp.tv_usec = v4l2_pts % USEC_PER_SEC;
     out->buf.timestamp.tv_sec = v4l2_pts / USEC_PER_SEC;
 }
@@ -67,13 +71,17 @@ static inline uint64_t v4l2_get_pts(V4L2Buffer *avbuf)
 {
     V4L2m2mContext *s = buf_to_m2mctx(avbuf);
     AVRational v4l2_timebase = { 1, USEC_PER_SEC };
+    AVRational timebase;
     int64_t v4l2_pts;
+
+    timebase = s->filterctx ? s->filterctx->inputs[0]->time_base
+                            : s->avctx->time_base;
 
     /* convert pts back to encoder timebase */
     v4l2_pts = (int64_t)avbuf->buf.timestamp.tv_sec * USEC_PER_SEC +
                         avbuf->buf.timestamp.tv_usec;
 
-    return av_rescale_q(v4l2_pts, v4l2_timebase, s->avctx->time_base);
+    return av_rescale_q(v4l2_pts, v4l2_timebase, timebase);
 }
 
 static enum AVColorPrimaries v4l2_get_color_primaries(V4L2Buffer *buf)
