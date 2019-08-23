@@ -30,6 +30,7 @@
 #include <linux/videodev2.h>
 
 #include "libavcodec/avcodec.h"
+#include "libavfilter/avfilter.h"
 #include "v4l2_context.h"
 
 #define container_of(ptr, type, member) ({ \
@@ -47,6 +48,9 @@ typedef struct V4L2m2mContext {
     /* the codec context queues */
     V4L2Context capture;
     V4L2Context output;
+
+    /* filter context */
+    AVFilterContext *filterctx;
 
     /* dynamic stream reconfig */
     AVCodecContext *avctx;

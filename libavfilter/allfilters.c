@@ -337,6 +337,7 @@ extern AVFilter ff_vf_scale_cuda;
 extern AVFilter ff_vf_scale_npp;
 extern AVFilter ff_vf_scale_qsv;
 extern AVFilter ff_vf_scale_vaapi;
+extern AVFilter ff_vf_scale_v4l2m2m;
 extern AVFilter ff_vf_scale2ref;
 extern AVFilter ff_vf_select;
 extern AVFilter ff_vf_selectivecolor;

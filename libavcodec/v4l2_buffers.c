@@ -60,6 +60,8 @@ static inline AVRational v4l2_get_timebase(V4L2Buffer *avbuf)
 {
     V4L2m2mContext *s = buf_to_m2mctx(avbuf);
 
+    if (s->filterctx)
+        return s->filterctx->inputs[0]->time_base;
     if (s->avctx->pkt_timebase.num)
         return s->avctx->pkt_timebase;
     return s->avctx->time_base;
