@@ -51,6 +51,7 @@ typedef struct V4L2Context {
      * AV_PIX_FMT_NONE means this is an encoded stream.
      */
     enum AVPixelFormat av_pix_fmt;
+    enum AVPixelFormat sw_pix_fmt;
 
     /**
      * AVCodecID corresponding to this buffer context.
@@ -92,6 +93,11 @@ typedef struct V4L2Context {
      */
     int done;
 
+    /**
+     *  Reference to AVHWDeviceContext* for generating AV_PIX_FMT_DRM_PRIME
+     *  frames.
+     */
+    AVBufferRef *frames_ref;
 } V4L2Context;
 
 /**

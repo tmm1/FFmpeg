@@ -63,6 +63,9 @@ typedef struct V4L2m2mContext {
 
     /* reference back to V4L2m2mPriv */
     void *priv;
+
+    /* generate DRM frames */
+    AVBufferRef *device_ref;
 } V4L2m2mContext;
 
 typedef struct V4L2m2mPriv {
