@@ -302,10 +302,26 @@ static av_cold int v4l2_encode_init(AVCodecContext *avctx)
     /* output context */
     output->av_codec_id = AV_CODEC_ID_RAWVIDEO;
     output->av_pix_fmt = avctx->pix_fmt;
+    if (output->av_pix_fmt == AV_PIX_FMT_DRM_PRIME)
+        output->sw_pix_fmt = AV_PIX_FMT_NV12;
 
     /* capture context */
     capture->av_codec_id = avctx->codec_id;
     capture->av_pix_fmt = AV_PIX_FMT_NONE;
+
+    if (avctx->hw_device_ctx) {
+        s->device_ref = av_buffer_ref(avctx->hw_device_ctx);
+    } else {
+        s->device_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_DRM);
+        if (!s->device_ref)
+            return AVERROR(ENOMEM);
+
+        ret = av_hwdevice_ctx_init(s->device_ref);
+        if (ret < 0) {
+            av_buffer_unref(&s->device_ref);
+            return ret;
+        }
+    }
 
     ret = ff_v4l2_m2m_codec_init(priv);
     if (ret) {
@@ -353,6 +369,10 @@ static const AVOption options[] = {
         .send_frame     = v4l2_send_frame, \
         .receive_packet = v4l2_receive_packet, \
         .close          = v4l2_encode_close, \
+        .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_NV12, \
+                                                         AV_PIX_FMT_YUV420P, \
+                                                         AV_PIX_FMT_DRM_PRIME, \
+                                                         AV_PIX_FMT_NONE}, \
         .capabilities   = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DELAY, \
         .wrapper_name   = "v4l2m2m", \
     };
