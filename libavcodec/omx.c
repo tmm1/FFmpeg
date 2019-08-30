@@ -477,6 +477,17 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role)
     else
         in_port_params.format.video.xFramerate = (1LL << 16) * avctx->time_base.den / avctx->time_base.num;
 
+#if CONFIG_OMX_RPI
+    /* Some deinterlacing filters may double the frame rate,
+     * but passing 119 to OMX on RPI4 makes the encoder
+     * hang and requires a reboot. We could pass in 0 (for
+     * unknown) instead, but that makes the encoder produce
+     * higher birates in VBR mode. Instead, we cap the framerate
+     * at 60fps since its just a hint to the encoder.
+     */
+    in_port_params.format.video.xFramerate = FFMIN(in_port_params.format.video.xFramerate, 60 << 16);
+#endif
+
     err = OMX_SetParameter(s->handle, OMX_IndexParamPortDefinition, &in_port_params);
     CHECK(err);
     err = OMX_GetParameter(s->handle, OMX_IndexParamPortDefinition, &in_port_params);
