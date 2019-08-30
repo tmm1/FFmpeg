@@ -276,9 +276,7 @@ static void v4l2_flush(AVCodecContext *avctx)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
 
 static const AVOption options[] = {
-    V4L_M2M_DEFAULT_OPTS,
-    { "num_capture_buffers", "Number of buffers in the capture context",
-        OFFSET(num_capture_buffers), AV_OPT_TYPE_INT, {.i64 = 20}, 20, INT_MAX, FLAGS },
+    V4L_M2M_DEFAULT_OPTS(8, 10),
     { NULL},
 };
 

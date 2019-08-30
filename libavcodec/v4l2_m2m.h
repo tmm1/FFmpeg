@@ -37,9 +37,11 @@
         const __typeof__(((type *)0)->member ) *__mptr = (ptr); \
         (type *)((char *)__mptr - offsetof(type,member) );})
 
-#define V4L_M2M_DEFAULT_OPTS \
+#define V4L_M2M_DEFAULT_OPTS(output_bufs, capture_bufs) \
     { "num_output_buffers", "Number of buffers in the output context",\
-        OFFSET(num_output_buffers), AV_OPT_TYPE_INT, { .i64 = 16 }, 6, INT_MAX, FLAGS }
+        OFFSET(num_output_buffers), AV_OPT_TYPE_INT, { .i64 = output_bufs },  2, VIDEO_MAX_FRAME, FLAGS }, \
+    { "num_capture_buffers", "Number of buffers in the capture context", \
+        OFFSET(num_capture_buffers), AV_OPT_TYPE_INT, {.i64 = capture_bufs }, 2, VIDEO_MAX_FRAME, FLAGS }
 
 typedef struct V4L2m2mContext {
     char devname[PATH_MAX];

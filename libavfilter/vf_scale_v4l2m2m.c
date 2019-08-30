@@ -301,11 +301,7 @@ static const AVOption scale_v4l2m2m_options[] = {
 
 #undef OFFSET
 #define OFFSET(x) offsetof(V4L2m2mPriv, x)
-
-    V4L_M2M_DEFAULT_OPTS,
-    { "num_capture_buffers", "Number of buffers in the capture context",
-        OFFSET(num_capture_buffers), AV_OPT_TYPE_INT, {.i64 = 4 }, 4, INT_MAX, FLAGS },
-
+    V4L_M2M_DEFAULT_OPTS(6, 6),
     { NULL },
 };
 
