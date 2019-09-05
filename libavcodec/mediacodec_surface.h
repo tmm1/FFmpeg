@@ -23,10 +23,15 @@
 #ifndef AVCODEC_MEDIACODEC_SURFACE_H
 #define AVCODEC_MEDIACODEC_SURFACE_H
 
-#include "libavcodec/avcodec.h"
+#include "avcodec.h"
+#include "mediacodec_wrapper.h"
 
+#if FF_MEDIACODEC_USE_NDK
+typedef ANativeWindow FFANativeWindow;
+#else
 struct FFANativeWindow;
 typedef struct FFANativeWindow FFANativeWindow;
+#endif /* FF_MEDIACODEC_USE_NDK */
 
 FFANativeWindow *ff_mediacodec_surface_ref(void *surface, void *log_ctx);
 int ff_mediacodec_surface_unref(FFANativeWindow *window, void *log_ctx);

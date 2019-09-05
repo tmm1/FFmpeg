@@ -34,11 +34,21 @@ FFANativeWindow *ff_mediacodec_surface_ref(void *surface, void *log_ctx)
         return NULL;
     }
 
+#if FF_MEDIACODEC_USE_NDK
+    if (!surface)
+        return NULL;
+
+    return ANativeWindow_fromSurface(env, (jobject)surface);
+#else
     return (*env)->NewGlobalRef(env, surface);
+#endif
 }
 
 int ff_mediacodec_surface_unref(FFANativeWindow *window, void *log_ctx)
 {
+#if FF_MEDIACODEC_USE_NDK
+    ANativeWindow_release(window);
+#else
     JNIEnv *env = NULL;
 
     env = ff_jni_get_env(log_ctx);
@@ -47,6 +57,7 @@ int ff_mediacodec_surface_unref(FFANativeWindow *window, void *log_ctx)
     }
 
     (*env)->DeleteGlobalRef(env, window);
+#endif
 
     return 0;
 }

@@ -153,6 +153,7 @@ static const struct FFJniField jni_amediaformat_mapping[] = {
     { NULL }
 };
 
+#if !FF_MEDIACODEC_USE_NDK
 static const AVClass amediaformat_class = {
     .class_name = "amediaformat",
     .item_name  = av_default_item_name,
@@ -165,6 +166,7 @@ struct FFAMediaFormat {
     struct JNIAMediaFormatFields jfields;
     jobject object;
 };
+#endif
 
 struct JNIAMediaCodecFields {
 
@@ -265,6 +267,7 @@ static const struct FFJniField jni_amediacodec_mapping[] = {
     { NULL }
 };
 
+#if !FF_MEDIACODEC_USE_NDK
 static const AVClass amediacodec_class = {
     .class_name = "amediacodec",
     .item_name  = av_default_item_name,
@@ -295,6 +298,7 @@ struct FFAMediaCodec {
 
     int has_get_i_o_buffer;
 };
+#endif
 
 #define JNI_GET_ENV_OR_RETURN(env, log_ctx, ret) do {              \
     (env) = ff_jni_get_env(log_ctx);                               \
@@ -609,6 +613,7 @@ done:
     return name;
 }
 
+#if !FF_MEDIACODEC_USE_NDK
 FFAMediaFormat *ff_AMediaFormat_new(void)
 {
     JNIEnv *env = NULL;
@@ -1686,6 +1691,7 @@ int ff_AMediaCodec_cleanOutputBuffers(FFAMediaCodec *codec)
 fail:
     return ret;
 }
+#endif
 
 int ff_Build_SDK_INT(AVCodecContext *avctx)
 {

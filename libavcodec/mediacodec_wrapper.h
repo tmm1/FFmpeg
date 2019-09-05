@@ -28,6 +28,14 @@
 
 #include "avcodec.h"
 
+#define FF_MEDIACODEC_USE_NDK 0
+
+#if FF_MEDIACODEC_USE_NDK
+#include <android/native_window_jni.h>
+#include <media/NdkMediaCodec.h>
+#include <media/NdkMediaFormat.h>
+#endif
+
 /**
  * The following API around MediaCodec and MediaFormat is based on the
  * NDK one provided by Google since Android 5.0.
@@ -54,9 +62,86 @@
  *
  */
 
+int ff_Build_SDK_INT(AVCodecContext *avctx);
+
 int ff_AMediaCodecProfile_getProfileFromAVCodecContext(AVCodecContext *avctx);
 
 char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int encoder, void *log_ctx);
+
+#if FF_MEDIACODEC_USE_NDK
+
+typedef AMediaFormat FFAMediaFormat;
+typedef AMediaCodec FFAMediaCodec;
+typedef AMediaCodecCryptoInfo FFAMediaCodecCryptoInfo;
+typedef AMediaCodecBufferInfo FFAMediaCodecBufferInfo;
+
+#define ff_AMediaFormat_new AMediaFormat_new
+#define ff_AMediaFormat_delete AMediaFormat_delete
+
+static av_always_inline char *ff_AMediaFormat_toString(FFAMediaFormat *format) {
+    const char *str = AMediaFormat_toString(format);
+    return av_strdup(str);
+}
+
+#define ff_AMediaFormat_getInt32 AMediaFormat_getInt32
+#define ff_AMediaFormat_getInt64 AMediaFormat_getInt64
+#define ff_AMediaFormat_getFloat AMediaFormat_getFloat
+#define ff_AMediaFormat_getBuffer AMediaFormat_getBuffer
+static av_always_inline int ff_AMediaFormat_getString(FFAMediaFormat *format, const char *name, const char **out) {
+    const char *str = NULL;
+    int ret = AMediaFormat_getString(format, name, &str);
+    if (ret)
+        *out = av_strdup(str);
+    else
+        *out = NULL;
+    return ret;
+}
+
+#define ff_AMediaFormat_setInt32 AMediaFormat_setInt32
+#define ff_AMediaFormat_setInt64 AMediaFormat_setInt64
+#define ff_AMediaFormat_setFloat AMediaFormat_setFloat
+#define ff_AMediaFormat_setString AMediaFormat_setString
+#define ff_AMediaFormat_setBuffer AMediaFormat_setBuffer
+
+#define ff_AMediaCodec_getName AMediaCodec_getName
+
+#define ff_AMediaCodec_createCodecByName AMediaCodec_createCodecByName
+#define ff_AMediaCodec_createDecoderByType AMediaCodec_createDecoderByType
+#define ff_AMediaCodec_createEncoderByType AMediaCodec_createEncoderByType
+
+#define ff_AMediaCodec_configure AMediaCodec_configure
+#define ff_AMediaCodec_start AMediaCodec_start
+#define ff_AMediaCodec_stop AMediaCodec_stop
+#define ff_AMediaCodec_flush AMediaCodec_flush
+#define ff_AMediaCodec_delete AMediaCodec_delete
+
+#define ff_AMediaCodec_getInputBuffer AMediaCodec_getInputBuffer
+#define ff_AMediaCodec_getOutputBuffer AMediaCodec_getOutputBuffer
+
+#define ff_AMediaCodec_dequeueInputBuffer AMediaCodec_dequeueInputBuffer
+#define ff_AMediaCodec_queueInputBuffer AMediaCodec_queueInputBuffer
+
+#define ff_AMediaCodec_dequeueOutputBuffer AMediaCodec_dequeueOutputBuffer
+#define ff_AMediaCodec_getOutputFormat AMediaCodec_getOutputFormat
+
+#define ff_AMediaCodec_releaseOutputBuffer AMediaCodec_releaseOutputBuffer
+#define ff_AMediaCodec_releaseOutputBufferAtTime AMediaCodec_releaseOutputBufferAtTime
+
+#define ff_AMediaCodec_infoTryAgainLater(codec, index) (index == AMEDIACODEC_INFO_TRY_AGAIN_LATER)
+#define ff_AMediaCodec_infoOutputBuffersChanged(codec, index) (index == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED)
+#define ff_AMediaCodec_infoOutputFormatChanged(codec, index) (index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED)
+
+#define ff_AMediaCodec_getBufferFlagCodecConfig(codec) AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG
+#define ff_AMediaCodec_getBufferFlagEndOfStream(codec) AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM
+#define ff_AMediaCodec_getBufferFlagKeyFrame(codec) 1
+
+#define ff_AMediaCodec_getConfigureFlagEncode(codec) AMEDIACODEC_CONFIGURE_FLAG_ENCODE
+
+static av_always_inline int ff_AMediaCodec_cleanOutputBuffers(FFAMediaCodec *codec) {
+    return AVERROR(EINVAL);
+}
+
+#else
 
 struct FFAMediaFormat;
 typedef struct FFAMediaFormat FFAMediaFormat;
@@ -126,6 +211,6 @@ int ff_AMediaCodec_getConfigureFlagEncode(FFAMediaCodec *codec);
 
 int ff_AMediaCodec_cleanOutputBuffers(FFAMediaCodec *codec);
 
-int ff_Build_SDK_INT(AVCodecContext *avctx);
+#endif /* FF_MEDIACODEC_USE_NDK */
 
 #endif /* AVCODEC_MEDIACODEC_WRAPPER_H */
