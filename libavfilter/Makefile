@@ -234,6 +234,7 @@ OBJS-$(CONFIG_EROSION_OPENCL_FILTER)         += vf_neighbor_opencl.o opencl.o \
                                                 opencl/neighbor.o
 OBJS-$(CONFIG_EXTRACTPLANES_FILTER)          += vf_extractplanes.o
 OBJS-$(CONFIG_FADE_FILTER)                   += vf_fade.o
+OBJS-$(CONFIG_FASTDEINT_FILTER)              += vf_fastdeint.o
 OBJS-$(CONFIG_FFTDNOIZ_FILTER)               += vf_fftdnoiz.o
 OBJS-$(CONFIG_FFTFILT_FILTER)                += vf_fftfilt.o
 OBJS-$(CONFIG_FIELD_FILTER)                  += vf_field.o

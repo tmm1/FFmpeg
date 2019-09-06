@@ -9796,6 +9796,33 @@ fade=t=in:st=5.5:d=0.5
 
 @end itemize
 
+@section fastdeint
+Fast deinterlacing algorithms.
+
+@table @option
+@item mode
+Deinterlacing algorithm to use.
+
+It accepts the following values:
+@table @samp
+@item discard
+Discard bottom frame.
+
+@item mean
+Half resolution blender.
+
+@item blend
+Full resolution blender.
+
+@item bob
+Bob doubler.
+
+@item linear
+Bob doubler with linear interpolation.
+@end table
+
+@end table
+
 @section fftdnoiz
 Denoise frames using 3D FFT (frequency domain filtering).
 
