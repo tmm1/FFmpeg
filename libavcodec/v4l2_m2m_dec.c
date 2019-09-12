@@ -133,14 +133,18 @@ static int v4l2_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     V4L2Context *const output = &s->output;
     int ret;
 
-    if (!s->buf_pkt.size) {
-        ret = ff_decode_get_packet(avctx, &s->buf_pkt);
-        if (ret < 0 && ret != AVERROR_EOF)
-            return ret;
-    }
-
     if (s->draining)
         goto dequeue;
+
+    if (!s->buf_pkt.size) {
+        ret = ff_decode_get_packet(avctx, &s->buf_pkt);
+        if (ret == AVERROR(EAGAIN))
+            goto dequeue;
+        else if (ret == AVERROR_EOF)
+            return ff_v4l2_context_enqueue_packet(output, &s->buf_pkt); /* null pkt */
+        else if (ret < 0)
+            return ret;
+    }
 
     ret = ff_v4l2_context_enqueue_packet(output, &s->buf_pkt);
     if (ret == AVERROR(EAGAIN)) {
