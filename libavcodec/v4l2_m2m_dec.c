@@ -131,14 +131,10 @@ static int v4l2_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     V4L2m2mContext *s = ((V4L2m2mPriv*)avctx->priv_data)->context;
     V4L2Context *const capture = &s->capture;
     V4L2Context *const output = &s->output;
-    AVPacket avpkt = {0};
     int ret;
 
-    if (s->buf_pkt.size) {
-        avpkt = s->buf_pkt;
-        memset(&s->buf_pkt, 0, sizeof(AVPacket));
-    } else {
-        ret = ff_decode_get_packet(avctx, &avpkt);
+    if (!s->buf_pkt.size) {
+        ret = ff_decode_get_packet(avctx, &s->buf_pkt);
         if (ret < 0 && ret != AVERROR_EOF)
             return ret;
     }
@@ -146,20 +142,17 @@ static int v4l2_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     if (s->draining)
         goto dequeue;
 
-    ret = ff_v4l2_context_enqueue_packet(output, &avpkt);
+    ret = ff_v4l2_context_enqueue_packet(output, &s->buf_pkt);
+    if (ret != AVERROR(EAGAIN))
+        av_packet_unref(&s->buf_pkt);
     if (ret < 0) {
         if (ret != AVERROR(EAGAIN))
            return ret;
 
-        s->buf_pkt = avpkt;
         /* no input buffers available, continue dequeing */
-    }
-
-    if (avpkt.size) {
+    } else {
         ret = v4l2_try_start(avctx);
         if (ret) {
-            av_packet_unref(&avpkt);
-
             /* cant recover */
             if (ret == AVERROR(ENOMEM))
                 return ret;
@@ -169,8 +162,6 @@ static int v4l2_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     }
 
 dequeue:
-    if (!s->buf_pkt.size)
-        av_packet_unref(&avpkt);
     return ff_v4l2_context_dequeue_frame(capture, frame, -1);
 }
 
