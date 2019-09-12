@@ -143,14 +143,14 @@ static int v4l2_receive_frame(AVCodecContext *avctx, AVFrame *frame)
         goto dequeue;
 
     ret = ff_v4l2_context_enqueue_packet(output, &s->buf_pkt);
-    if (ret != AVERROR(EAGAIN))
-        av_packet_unref(&s->buf_pkt);
-    if (ret < 0) {
-        if (ret != AVERROR(EAGAIN))
-           return ret;
-
+    if (ret == AVERROR(EAGAIN)) {
         /* no input buffers available, continue dequeing */
     } else {
+        av_packet_unref(&s->buf_pkt);
+
+        if (ret < 0)
+            return ret;
+
         ret = v4l2_try_start(avctx);
         if (ret) {
             /* cant recover */
