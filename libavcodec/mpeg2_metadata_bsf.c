@@ -219,7 +219,7 @@ static int mpeg2_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
                 continue;
             }
             if (a53_ud.user_identifier != A53_USER_IDENTIFIER_ATSC ||
-                a53_ud.atsc.user_data_type_code !=
+                a53_ud.u.atsc.user_data_type_code !=
                     A53_USER_DATA_TYPE_CODE_CC_DATA) {
                 // Valid but something else (e.g. AFD).
                 continue;

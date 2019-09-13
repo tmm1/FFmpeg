@@ -150,10 +150,10 @@ int ff_cbs_read_a53_cc_side_data(CodedBitstreamContext *ctx,
     *data = (A53UserData) {
         .user_identifier = A53_USER_IDENTIFIER_ATSC,
 
-        .atsc = {
+        .u = { .atsc = {
             .user_data_type_code = A53_USER_DATA_TYPE_CODE_CC_DATA,
 
-            .cc_data = {
+            .u = { .cc_data = {
                 .process_em_data_flag = 0,
                 .process_cc_data_flag = 1,
                 .additional_data_flag = 0,
@@ -161,10 +161,10 @@ int ff_cbs_read_a53_cc_side_data(CodedBitstreamContext *ctx,
                 .em_data = 0,
 
                 .cc_count = cc_count,
-            },
-        },
+            } },
+        } },
     };
-    cc = &data->atsc.cc_data;
+    cc = &data->u.atsc.u.cc_data;
 
     err = init_get_bits(&gbc, side_data, 8 * side_data_size);
     if (err < 0)
@@ -190,10 +190,10 @@ int ff_cbs_write_a53_cc_side_data(CodedBitstreamContext *ctx,
     int err, i;
 
     if (data->user_identifier != A53_USER_IDENTIFIER_ATSC ||
-        data->atsc.user_data_type_code != A53_USER_DATA_TYPE_CODE_CC_DATA)
+        data->u.atsc.user_data_type_code != A53_USER_DATA_TYPE_CODE_CC_DATA)
         return AVERROR(EINVAL);
 
-    cc = &data->atsc.cc_data;
+    cc = &data->u.atsc.u.cc_data;
 
     err = av_reallocp(side_data, *side_data_size + 3 * cc->cc_count);
     if (err < 0)

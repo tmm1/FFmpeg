@@ -70,7 +70,7 @@ typedef struct A53ATSCUserData {
     union {
         CEA708CCData cc_data;
         A53BarData bar_data;
-    };
+    } u;
 } A53ATSCUserData;
 
 typedef struct A53AFDData {
@@ -83,7 +83,7 @@ typedef struct A53UserData {
     union {
         A53ATSCUserData atsc;
         A53AFDData afd;
-    };
+    } u;
 } A53UserData;
 
 

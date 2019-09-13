@@ -579,7 +579,7 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
                 };
                 H264RawSEIUserDataRegistered *udr =
                     &payload.payload.user_data_registered;
-                size_t size = 9 + 3 * a53_ud.atsc.cc_data.cc_count;
+                size_t size = 9 + 3 * a53_ud.u.atsc.u.cc_data.cc_count;
 
                 udr->data_ref = av_buffer_alloc(2 + size);
                 if (!udr->data_ref) {
@@ -639,7 +639,7 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
                     continue;
                 }
                 if (a53_ud.user_identifier != A53_USER_IDENTIFIER_ATSC ||
-                    a53_ud.atsc.user_data_type_code !=
+                    a53_ud.u.atsc.user_data_type_code !=
                         A53_USER_DATA_TYPE_CODE_CC_DATA) {
                     // Valid but something else (e.g. AFD).
                     continue;

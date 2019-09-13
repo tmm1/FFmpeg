@@ -99,9 +99,9 @@ static int FUNC(a53_atsc_user_data)(CodedBitstreamContext *ctx, RWContext *rw,
 
     switch (current->user_data_type_code) {
     case A53_USER_DATA_TYPE_CODE_CC_DATA:
-        return FUNC(cea708_cc_data)(ctx, rw, &current->cc_data);
+        return FUNC(cea708_cc_data)(ctx, rw, &current->u.cc_data);
     case A53_USER_DATA_TYPE_CODE_BAR_DATA:
-        return FUNC(a53_bar_data)(ctx, rw, &current->bar_data);
+        return FUNC(a53_bar_data)(ctx, rw, &current->u.bar_data);
     default:
         av_log(ctx->log_ctx, AV_LOG_WARNING,
                "Unknown ATSC user data found: type code %#02x.\n",
@@ -137,9 +137,9 @@ static int FUNC(a53_user_data)(CodedBitstreamContext *ctx, RWContext *rw,
 
     switch (current->user_identifier) {
     case A53_USER_IDENTIFIER_ATSC:
-        return FUNC(a53_atsc_user_data)(ctx, rw, &current->atsc);
+        return FUNC(a53_atsc_user_data)(ctx, rw, &current->u.atsc);
     case A53_USER_IDENTIFIER_AFD:
-        return FUNC(a53_afd_data)(ctx, rw, &current->afd);
+        return FUNC(a53_afd_data)(ctx, rw, &current->u.afd);
     default:
         av_log(ctx->log_ctx, AV_LOG_WARNING,
                "Unknown registered user data found: identifier %#08x.\n",
