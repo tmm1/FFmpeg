@@ -5401,6 +5401,8 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
 
         if (ret < 0)
             return ret;
+        if (substream_type == ST_SUBSTREAM)
+            break;
     }
 
     if (get_bits_left(gb) < 0)
