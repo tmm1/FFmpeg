@@ -27,6 +27,7 @@
 #include "libavutil/float_dsp.h"
 #include "libavutil/thread.h"
 #include "libavutil/qsort.h"
+#include "libavutil/opt.h"
 
 #include "ac4dec_data.h"
 #include "avcodec.h"
@@ -305,6 +306,7 @@ typedef struct SubstreamInfo {
     int     sus_ver;
     int     channel_mode;
     int     substream_index;
+    int     hsf_ext_substream_index;
     int     sf_multiplier;
     int     bitrate_indicator;
     int     add_ch_base;
@@ -347,6 +349,8 @@ typedef struct AC4DecodeContext {
     AVCodecContext *avctx;                  ///< parent context
     AVFloatDSPContext *fdsp;
     GetBitContext   gbc;                    ///< bitstream reader
+
+    int             target_presentation;
 
     int             version;
     int             sequence_counter;
@@ -839,6 +843,20 @@ static int content_type(AC4DecodeContext *s, PresentationInfo *p)
     return 0;
 }
 
+static int ac4_hsf_ext_substream_info(AC4DecodeContext *s, PresentationInfo *p,
+                                      SubstreamInfo *ssi, int substream_present)
+{
+    GetBitContext *gb = &s->gbc;
+
+    if (substream_present) {
+        ssi->hsf_ext_substream_index = get_bits(gb, 2);
+        if (ssi->hsf_ext_substream_index == 3)
+            ssi->hsf_ext_substream_index += variable_bits(gb, 2);
+    }
+
+    return 0;
+}
+
 static int ac4_substream_info(AC4DecodeContext *s, PresentationInfo *p,
                               SubstreamInfo *ssi)
 {
@@ -930,7 +948,12 @@ static int ac4_presentation_info(AC4DecodeContext *s, PresentationInfo *p)
             p->hsf_ext = get_bits1(gb);
             switch (p->presentation_config) {
             case 0:
-                av_assert0(0);
+                ret = ac4_substream_info(s, p, &p->ssinfo);
+                if (ret < 0)
+                    return ret;
+                ret = ac4_hsf_ext_substream_info(s, p, &p->ssinfo, 1);
+                if (ret < 0)
+                    return ret;
                 ret = ac4_substream_info(s, p, &p->ssinfo);
                 if (ret < 0)
                     return ret;
@@ -2846,7 +2869,7 @@ static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *s
         sb = ssch->sbg_master[j];
         odd = (sb - 2 + ssch->sba) % 2;
 
-        while (sb > ( ssch->sba - source_band_low + msb - odd )) {
+        while (sb > ( ssch->sba - source_band_low + msb - odd) && j >= 0) {
             j--;
             sb = ssch->sbg_master[j];
             odd = (sb - 2 + ssch->sba) % 2;
@@ -3786,6 +3809,7 @@ static int single_channel_element(AC4DecodeContext *s, int iframe)
     int ret = 0;
 
     ss->codec_mode = get_bits1(gb);
+    av_log(s->avctx, AV_LOG_DEBUG, "codec_mode: %d\n", ss->codec_mode);
     if (iframe) {
         if (ss->codec_mode == CM_ASPX)
             aspx_config(s, ss);
@@ -4055,7 +4079,7 @@ static int metadata(AC4DecodeContext *s, SubstreamInfo *ssi, int iframe)
     return 0;
 }
 
-static int ac4_substream(AC4DecodeContext *s)
+static int ac4_substream(AC4DecodeContext *s, int presentation)
 {
     GetBitContext *gb = &s->gbc;
     int audio_size, offset, consumed;
@@ -4072,7 +4096,7 @@ static int ac4_substream(AC4DecodeContext *s)
     align_get_bits(gb);
 
     offset = get_bits_count(gb) >> 3;
-    ret = audio_data(s, s->pinfo[0].ssinfo.channel_mode, s->pinfo[0].ssinfo.iframe[0]);
+    ret = audio_data(s, s->pinfo[presentation].ssinfo.channel_mode, s->pinfo[presentation].ssinfo.iframe[0]);
     if (ret < 0)
         return ret;
 
@@ -4091,7 +4115,7 @@ static int ac4_substream(AC4DecodeContext *s)
             av_log(s->avctx, AV_LOG_WARNING, "substream audio data underread: %d\n", non_zero);
     }
 
-    metadata(s, &s->pinfo[0].ssinfo, s->iframe_global);
+    metadata(s, &s->pinfo[presentation].ssinfo, s->iframe_global);
 
     align_get_bits(gb);
 
@@ -5301,6 +5325,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
     AVFrame *frame = data;
     GetBitContext *gb = &s->gbc;
     int ret, start_offset = 0;
+    int presentation;
     uint32_t header;
 
     if (avpkt->size < 8)
@@ -5326,9 +5351,10 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
     if (!s->have_iframe)
         return avpkt->size;
 
+    presentation = FFMIN(s->target_presentation, FFMAX(0, s->nb_presentations - 1));
     avctx->sample_rate = s->fs_index ? 48000 : 44100;
-    avctx->channels = channel_mode_nb_channels[s->pinfo[0].ssinfo.channel_mode];
-    avctx->channel_layout = channel_mode_layouts[s->pinfo[0].ssinfo.channel_mode];
+    avctx->channels = channel_mode_nb_channels[s->pinfo[presentation].ssinfo.channel_mode];
+    avctx->channel_layout = channel_mode_layouts[s->pinfo[presentation].ssinfo.channel_mode];
     frame->nb_samples = av_rescale(s->frame_len_base,
                                    s->resampling_ratio.num,
                                    s->resampling_ratio.den);
@@ -5343,7 +5369,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
 
         switch (substream_type) {
         case ST_SUBSTREAM:
-            ret = ac4_substream(s);
+            ret = ac4_substream(s, presentation);
             break;
         case ST_PRESENTATION:
             skip_bits_long(gb, s->substream_size[i] * 8);
@@ -5362,7 +5388,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
     for (int ch = 0; ch < avctx->channels; ch++)
         scale_spec(s, ch);
 
-    switch (s->pinfo[0].ssinfo.channel_mode) {
+    switch (s->pinfo[presentation].ssinfo.channel_mode) {
     case 0:
         /* nothing to do */
         break;
@@ -5378,7 +5404,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
     for (int ch = 0; ch < avctx->channels; ch++)
         prepare_channel(s, ch);
 
-    switch (s->pinfo[0].ssinfo.channel_mode) {
+    switch (s->pinfo[presentation].ssinfo.channel_mode) {
     case 0:
         break;
     case 1:
@@ -5421,10 +5447,26 @@ static av_cold int ac4_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
+#define OFFSET(param) offsetof(AC4DecodeContext, param)
+#define FLAGS AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM
+
+static const AVOption options[] = {
+    { "presentation", "select presentation", OFFSET(target_presentation), AV_OPT_TYPE_INT, {.i64 = 0 }, 0, INT_MAX, FLAGS },
+    { NULL},
+};
+
+static const AVClass ac4_decoder_class = {
+    .class_name = "AC4 decoder",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+
 AVCodec ff_ac4_decoder = {
     .name           = "ac4",
     .type           = AVMEDIA_TYPE_AUDIO,
     .id             = AV_CODEC_ID_AC4,
+    .priv_class     = &ac4_decoder_class,
     .priv_data_size = sizeof (AC4DecodeContext),
     .init           = ac4_decode_init,
     .close          = ac4_decode_end,
