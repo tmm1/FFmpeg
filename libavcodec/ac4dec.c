@@ -318,8 +318,9 @@ typedef struct SubstreamInfo {
 } SubstreamInfo;
 
 typedef struct SubstreamGroupInfo {
-    int     channel_coded;
-    int     group_index;
+    int           channel_coded;
+    int           group_index;
+    SubstreamInfo ssinfo;
 } SubstreamGroupInfo;
 
 typedef struct PresentationInfo {
@@ -380,8 +381,8 @@ typedef struct AC4DecodeContext {
     DECLARE_ALIGNED(32, float, winl)[2048];
     DECLARE_ALIGNED(32, float, winr)[2048];
 
-    SubstreamGroupInfo ssgroup[8];
     PresentationInfo   pinfo[8];
+    SubstreamGroupInfo ssgroup[8];
     Substream          substream;
 
     av_tx_fn           tx_fn[8][5];
@@ -843,8 +844,8 @@ static int content_type(AC4DecodeContext *s, PresentationInfo *p)
     return 0;
 }
 
-static int ac4_hsf_ext_substream_info(AC4DecodeContext *s, PresentationInfo *p,
-                                      SubstreamInfo *ssi, int substream_present)
+static int ac4_hsf_ext_substream_info(AC4DecodeContext *s, SubstreamInfo *ssi,
+                                      int substream_present)
 {
     GetBitContext *gb = &s->gbc;
 
@@ -951,7 +952,7 @@ static int ac4_presentation_info(AC4DecodeContext *s, PresentationInfo *p)
                 ret = ac4_substream_info(s, p, &p->ssinfo);
                 if (ret < 0)
                     return ret;
-                ret = ac4_hsf_ext_substream_info(s, p, &p->ssinfo, 1);
+                ret = ac4_hsf_ext_substream_info(s, &p->ssinfo, 1);
                 if (ret < 0)
                     return ret;
                 ret = ac4_substream_info(s, p, &p->ssinfo);
@@ -1049,11 +1050,27 @@ static int frame_rate_fractions_info(AC4DecodeContext *s, PresentationInfo *p)
     return 0;
 }
 
-static int ac4_substream_info_chan(AC4DecodeContext *s, PresentationInfo *p,
-                                   SubstreamInfo *ssi, int substreams_present,
+static int oamd_substream_info(AC4DecodeContext *s, SubstreamGroupInfo *ssi,
+                               int substreams_present)
+{
+    GetBitContext *gb = &s->gbc;
+
+    skip_bits1(gb);
+    if (substreams_present) {
+        int substream_index = get_bits(gb, 2);
+        if (substream_index == 3)
+            substream_index += variable_bits(gb, 2);
+    }
+
+    return 0;
+}
+
+static int ac4_substream_info_chan(AC4DecodeContext *s, SubstreamGroupInfo *g,
+                                   int substreams_present,
                                    int sus_ver)
 {
     GetBitContext *gb = &s->gbc;
+    SubstreamInfo *ssi = &g->ssinfo;
 
     ssi->sus_ver = sus_ver;
     ssi->channel_mode = get_vlc2(gb, channel_mode_vlc.table, channel_mode_vlc.bits, 3);
@@ -1085,7 +1102,7 @@ static int ac4_substream_info_chan(AC4DecodeContext *s, PresentationInfo *p,
         ssi->channel_mode == 10)
         ssi->add_ch_base = get_bits1(gb);
 
-    for (int i = 0; i < p->frame_rate_factor; i++)
+    for (int i = 0; i < s->pinfo[0].frame_rate_factor; i++)
         ssi->iframe[i] = get_bits1(gb);
 
     if (substreams_present) {
@@ -1099,14 +1116,14 @@ static int ac4_substream_info_chan(AC4DecodeContext *s, PresentationInfo *p,
 }
 
 static int ac4_substream_group_info(AC4DecodeContext *s,
-                                    SubstreamGroupInfo *g,
-                                    PresentationInfo *p)
+                                    SubstreamGroupInfo *g)
 {
     GetBitContext *gb = &s->gbc;
     int substreams_present;
     int n_lf_substreams;
     int hsf_ext;
     int sus_ver;
+    int ret;
 
     substreams_present = get_bits1(gb);
     hsf_ext = get_bits1(gb);
@@ -1125,28 +1142,28 @@ static int ac4_substream_group_info(AC4DecodeContext *s,
             } else {
                 sus_ver = 1;
             }
-            ac4_substream_info_chan(s, p, &p->ssinfo, substreams_present, sus_ver);
+
+            ret = ac4_substream_info_chan(s, g, substreams_present, sus_ver);
+            if (ret < 0)
+                return ret;
             if (hsf_ext)
-                av_assert0(0);
-                //ac4_hsf_ext_substream_info(substreams_present);
+                ac4_hsf_ext_substream_info(s, &g->ssinfo, substreams_present);
         }
     } else {
-        return AVERROR_PATCHWELCOME;
+        if (get_bits1(gb))
+            oamd_substream_info(s, g, substreams_present);
         av_assert0(0);
-        //if (get_bits1(gb))
-        //    oamd_substream_info(substreams_present);
-        //for (int sus = 0; sus < n_lf_substreams; sus++) {
-        //    if (get_bits1(gb)) {
-        //        ac4_substream_info_ajoc(substreams_present);
-        //        if (hsf_ext) {
-        //            ac4_hsf_ext_substream_info(substreams_present);
-        //        }
-        //    } else {
-        //        ac4_substream_info_obj(substreams_present);
-        //        if (hsf_ext)
-        //            ac4_hsf_ext_substream_info(substreams_present);
-        //    }
-        //}
+      /*for (int sus = 0; sus < n_lf_substreams; sus++) {
+            if (get_bits1(gb)) {
+                ac4_substream_info_ajoc(substreams_present);
+                if (hsf_ext)
+                    ac4_hsf_ext_substream_info(substreams_present);
+            } else {
+                ac4_substream_info_obj(substreams_present);
+                if (hsf_ext)
+                    ac4_hsf_ext_substream_info(substreams_present);
+            }
+        }*/
     }
 
     if (get_bits1(gb))
@@ -1155,8 +1172,7 @@ static int ac4_substream_group_info(AC4DecodeContext *s,
     return 0;
 }
 
-static int ac4_sgi_specifier(AC4DecodeContext *s, PresentationInfo *p,
-                             SubstreamGroupInfo *g)
+static int ac4_sgi_specifier(AC4DecodeContext *s, SubstreamGroupInfo *g)
 {
     GetBitContext *gb = &s->gbc;
 
@@ -1205,41 +1221,41 @@ static int ac4_presentation_v1_info(AC4DecodeContext *s, PresentationInfo *p)
             p->enable_presentation = get_bits1(gb);
 
         if (single_substream_group == 1) {
-            ac4_sgi_specifier(s, p, &s->ssgroup[0]);
+            ac4_sgi_specifier(s, &s->ssgroup[0]);
             p->n_substream_groups = 1;
         } else {
             p->multi_pid = get_bits1(gb);
             switch (p->presentation_config) {
             case 0:
                 /* Music and Effects + Dialogue */
-                ac4_sgi_specifier(s, p, &s->ssgroup[0]);
-                ac4_sgi_specifier(s, p, &s->ssgroup[1]);
+                ac4_sgi_specifier(s, &s->ssgroup[0]);
+                ac4_sgi_specifier(s, &s->ssgroup[1]);
                 p->n_substream_groups = 2;
                 break;
             case 1:
                 /* Main + DE */
-                ac4_sgi_specifier(s, p, &s->ssgroup[0]);
-                ac4_sgi_specifier(s, p, &s->ssgroup[1]);
+                ac4_sgi_specifier(s, &s->ssgroup[0]);
+                ac4_sgi_specifier(s, &s->ssgroup[1]);
                 p->n_substream_groups = 1;
                 break;
             case 2:
                 /* Main + Associated Audio */
-                ac4_sgi_specifier(s, p, &s->ssgroup[0]);
-                ac4_sgi_specifier(s, p, &s->ssgroup[1]);
+                ac4_sgi_specifier(s, &s->ssgroup[0]);
+                ac4_sgi_specifier(s, &s->ssgroup[1]);
                 p->n_substream_groups = 2;
                 break;
             case 3:
                 /* Music and Effects + Dialogue + Associated Audio */
-                ac4_sgi_specifier(s, p, &s->ssgroup[0]);
-                ac4_sgi_specifier(s, p, &s->ssgroup[1]);
-                ac4_sgi_specifier(s, p, &s->ssgroup[2]);
+                ac4_sgi_specifier(s, &s->ssgroup[0]);
+                ac4_sgi_specifier(s, &s->ssgroup[1]);
+                ac4_sgi_specifier(s, &s->ssgroup[2]);
                 p->n_substream_groups = 3;
                 break;
             case 4:
                 /* Main + DE + Associated Audio */
-                ac4_sgi_specifier(s, p, &s->ssgroup[0]);
-                ac4_sgi_specifier(s, p, &s->ssgroup[1]);
-                ac4_sgi_specifier(s, p, &s->ssgroup[2]);
+                ac4_sgi_specifier(s, &s->ssgroup[0]);
+                ac4_sgi_specifier(s, &s->ssgroup[1]);
+                ac4_sgi_specifier(s, &s->ssgroup[2]);
                 p->n_substream_groups = 2;
                 break;
             case 5:
@@ -1249,7 +1265,7 @@ static int ac4_presentation_v1_info(AC4DecodeContext *s, PresentationInfo *p)
                     p->n_substream_groups += variable_bits(gb, 2);
 
                 for (int sg = 0; sg < p->n_substream_groups; sg++)
-                    ac4_sgi_specifier(s, p, &s->ssgroup[sg]);
+                    ac4_sgi_specifier(s, &s->ssgroup[sg]);
                 break;
             default:
                 /* EMDF and other data */
@@ -1360,8 +1376,9 @@ static int ac4_toc(AC4DecodeContext *s)
                 return ret;
         }
 
-        for (int i = 0; i <= s->total_groups && s->nb_presentations; i++) {
-            ret = ac4_substream_group_info(s, &s->ssgroup[i], &s->pinfo[0]);
+        av_log(s->avctx, AV_LOG_DEBUG, "total_groups: %d\n", s->total_groups + 1);
+        for (int i = 0; i <= s->total_groups; i++) {
+            ret = ac4_substream_group_info(s, &s->ssgroup[i]);
             if (ret < 0)
                 return ret;
         }
@@ -3831,6 +3848,7 @@ static int audio_data(AC4DecodeContext *s, int channel_mode, int iframe)
 {
     int ret = 0;
 
+    av_log(s->avctx, AV_LOG_DEBUG, "channel_mode: %d\n", channel_mode);
     switch (channel_mode) {
     case 0:
         ret = single_channel_element(s, iframe);
@@ -4079,7 +4097,7 @@ static int metadata(AC4DecodeContext *s, SubstreamInfo *ssi, int iframe)
     return 0;
 }
 
-static int ac4_substream(AC4DecodeContext *s, int presentation)
+static int ac4_substream(AC4DecodeContext *s, SubstreamInfo *ssinfo)
 {
     GetBitContext *gb = &s->gbc;
     int audio_size, offset, consumed;
@@ -4096,7 +4114,7 @@ static int ac4_substream(AC4DecodeContext *s, int presentation)
     align_get_bits(gb);
 
     offset = get_bits_count(gb) >> 3;
-    ret = audio_data(s, s->pinfo[presentation].ssinfo.channel_mode, s->pinfo[presentation].ssinfo.iframe[0]);
+    ret = audio_data(s, ssinfo->channel_mode, ssinfo->iframe[0]);
     if (ret < 0)
         return ret;
 
@@ -4115,7 +4133,7 @@ static int ac4_substream(AC4DecodeContext *s, int presentation)
             av_log(s->avctx, AV_LOG_WARNING, "substream audio data underread: %d\n", non_zero);
     }
 
-    metadata(s, &s->pinfo[presentation].ssinfo, s->iframe_global);
+    metadata(s, ssinfo, s->iframe_global);
 
     align_get_bits(gb);
 
@@ -5325,6 +5343,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
     AVFrame *frame = data;
     GetBitContext *gb = &s->gbc;
     int ret, start_offset = 0;
+    SubstreamInfo *ssinfo;
     int presentation;
     uint32_t header;
 
@@ -5342,6 +5361,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
 
     if ((ret = init_get_bits8(gb, avpkt->data, avpkt->size)) < 0)
         return ret;
+    av_log(s->avctx, AV_LOG_DEBUG, "packet_size: %d\n", avpkt->size);
     skip_bits_long(gb, start_offset * 8);
 
     ret = ac4_toc(s);
@@ -5352,9 +5372,10 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
         return avpkt->size;
 
     presentation = FFMIN(s->target_presentation, FFMAX(0, s->nb_presentations - 1));
+    ssinfo = s->version == 2 ? &s->ssgroup[0].ssinfo : &s->pinfo[presentation].ssinfo;
     avctx->sample_rate = s->fs_index ? 48000 : 44100;
-    avctx->channels = channel_mode_nb_channels[s->pinfo[presentation].ssinfo.channel_mode];
-    avctx->channel_layout = channel_mode_layouts[s->pinfo[presentation].ssinfo.channel_mode];
+    avctx->channels = channel_mode_nb_channels[ssinfo->channel_mode];
+    avctx->channel_layout = channel_mode_layouts[ssinfo->channel_mode];
     frame->nb_samples = av_rescale(s->frame_len_base,
                                    s->resampling_ratio.num,
                                    s->resampling_ratio.den);
@@ -5369,7 +5390,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
 
         switch (substream_type) {
         case ST_SUBSTREAM:
-            ret = ac4_substream(s, presentation);
+            ret = ac4_substream(s, ssinfo);
             break;
         case ST_PRESENTATION:
             skip_bits_long(gb, s->substream_size[i] * 8);
@@ -5388,7 +5409,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
     for (int ch = 0; ch < avctx->channels; ch++)
         scale_spec(s, ch);
 
-    switch (s->pinfo[presentation].ssinfo.channel_mode) {
+    switch (ssinfo->channel_mode) {
     case 0:
         /* nothing to do */
         break;
@@ -5404,7 +5425,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
     for (int ch = 0; ch < avctx->channels; ch++)
         prepare_channel(s, ch);
 
-    switch (s->pinfo[presentation].ssinfo.channel_mode) {
+    switch (ssinfo->channel_mode) {
     case 0:
         break;
     case 1:
