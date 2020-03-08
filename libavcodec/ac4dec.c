@@ -4895,11 +4895,12 @@ static int get_qnoise_scale_factors(AC4DecodeContext *s, SubstreamChannel *ssch,
 
     delta = ((ch == 1) && (ssch->aspx_balance == 1)) + 1;
 
+    memset(ssch->qscf_noise_sbg, 0, sizeof(ssch->qscf_noise_sbg));
+
     /* Loop over envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_noise; atsg++) {
         /* Loop over noise subband groups */
         for (int sbg = 0; sbg < ssch->num_sbg_noise; sbg++) {
-            ssch->qscf_noise_sbg[atsg][sbg] = 0;
             if (ssch->aspx_noise_delta_dir[atsg] == 0) { /* FREQ */
                 for (int i = 0; i <= sbg; i++) {
                     ssch->qscf_noise_sbg[atsg][sbg] += delta * ssch->aspx_data[1][atsg][sbg];
@@ -4972,6 +4973,8 @@ static void mono_deq_signal_factors(AC4DecodeContext *s, SubstreamChannel *ssch)
 static void mono_deq_noise_factors(AC4DecodeContext *s, SubstreamChannel *ssch)
 {
 #define NOISE_FLOOR_OFFSET 6
+
+    memset(ssch->scf_noise_sbg, 0, sizeof(ssch->scf_noise_sbg));
 
     for (int atsg = 0; atsg < ssch->aspx_num_noise; atsg++) {
         for (int sbg = 0; sbg < ssch->num_sbg_noise; sbg++)
@@ -5247,6 +5250,8 @@ static void estimate_spectral_envelopes(AC4DecodeContext *s, Substream *ss, Subs
 static void map_signoise(AC4DecodeContext *s, SubstreamChannel *ssch)
 {
     int atsg_noise = 0;
+
+    memset(ssch->scf_noise_sb, 0, sizeof(ssch->scf_noise_sb));
 
     /* Loop over Signal Envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
