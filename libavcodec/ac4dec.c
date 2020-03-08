@@ -3091,6 +3091,9 @@ static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *s
     ssch->num_sbg_sig[1] = ssch->num_sbg_sig_highres;
 
     ssch->num_sbg_noise = FFMAX(1, floorf(ss->aspx_noise_sbg * log2f(ssch->sbz / (float)ssch->sbx) + 0.5));
+    if (ssch->num_sbg_noise > 5)
+        return AVERROR_INVALIDDATA;
+
     idx[0] = 0;
     ssch->sbg_noise[0] = ssch->sbg_sig_lowres[0];
     for (int sbg = 1; sbg <= ssch->num_sbg_noise; sbg++) {
@@ -5467,6 +5470,7 @@ static int noise_idx(int sb, int ts, AC4DecodeContext *s, SubstreamChannel *ssch
 static void generate_noise(AC4DecodeContext *s, SubstreamChannel *ssch)
 {
     int atsg = 0;
+
     /* Loop over QMF time slots */
     for (int ts = ssch->atsg_sig[0] * s->num_ts_in_ats;
          ts < ssch->atsg_sig[ssch->aspx_num_env] * s->num_ts_in_ats; ts++) {
@@ -5486,6 +5490,7 @@ static void generate_noise(AC4DecodeContext *s, SubstreamChannel *ssch)
 static void generate_tones(AC4DecodeContext *s, SubstreamChannel *ssch)
 {
     int atsg = 0;
+
     /* Loop over QMF time slots */
     for (int ts = ssch->atsg_sig[0] * s->num_ts_in_ats;
          ts < ssch->atsg_sig[ssch->aspx_num_env] * s->num_ts_in_ats; ts++) {
