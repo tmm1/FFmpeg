@@ -5291,8 +5291,8 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
             atsg++;
         /* Loop over QMF subbands */
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
-            ssch->Y[0][ts][sb]  = ssch->sig_gain_sb_adj[sb][atsg];
-            ssch->Y[1][ts][sb]  = 0;
+            ssch->Y[0][ts][sb] = ssch->sig_gain_sb_adj[sb][atsg];
+            ssch->Y[1][ts][sb] = 0;
             complex_mul(&ssch->Y[0][ts][sb], &ssch->Y[1][ts][sb],
                         ssch->Y[0][ts][sb], ssch->Y[1][ts][sb],
                         ssch->Q_high[0][ts + ts_offset_hfadj][sb + ssch->sbx],
