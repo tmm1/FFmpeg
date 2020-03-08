@@ -2533,10 +2533,10 @@ static int sf_data(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ssch,
         if (ret < 0)
             return ret;
     } else {
-        ssf_data(s, ss, ssch, iframe);
+        ret = ssf_data(s, ss, ssch, iframe);
     }
 
-    return 0;
+    return ret;
 }
 
 static int chparam_info(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ssch)
