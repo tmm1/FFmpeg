@@ -2852,6 +2852,7 @@ static void aspx_delta_dir(AC4DecodeContext *s, SubstreamChannel *ssch)
 
     for (int env = 0; env < ssch->aspx_num_env; env++)
         ssch->aspx_sig_delta_dir[env] = get_bits1(gb);
+
     for (int env = 0; env < ssch->aspx_num_noise; env++)
         ssch->aspx_noise_delta_dir[env] = get_bits1(gb);
 }
@@ -3163,7 +3164,7 @@ static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *s
 
     /* Sort patch borders + low res sbg into temporary limiter table */
     ssch->num_sbg_lim = ssch->num_sbg_sig_lowres + ssch->num_sbg_patches - 1;
-    AV_QSORT(ssch->sbg_lim, ssch->num_sbg_lim + 1, int, cmpints);
+    AV_QSORT(ssch->sbg_lim, ssch->num_sbg_lim, int, cmpints);
     sbg = 1;
 
     while (sbg <= ssch->num_sbg_lim) {
