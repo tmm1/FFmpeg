@@ -191,11 +191,11 @@ typedef struct SubstreamChannel {
     int     qscf_prev[32][64];
     int     qscf_sig_sbg[32][64];
     int     qscf_sig_sbg_prev[32][64];
-    int     qscf_noise_sbg[32][64];
+    int     qscf_noise_sbg[2][64];
 
     float   scf_sig_sbg[32][64];
     float   scf_sig_sb[32][64];
-    float   scf_noise_sbg[32][64];
+    float   scf_noise_sbg[2][64];
     float   scf_noise_sb[32][64];
 
     float   gain_vec[32];
@@ -5260,7 +5260,7 @@ static void map_signoise(AC4DecodeContext *s, SubstreamChannel *ssch)
 
         /* Map Noise Floors from subband groups to QMF subbands, and to signal envelopes */
         for (int sbg = 0; sbg < ssch->num_sbg_noise; sbg++) {
-            for (int sb = ssch->sbg_noise[sbg]-ssch->sbx; sb < ssch->sbg_noise[sbg+1]-ssch->sbx; sb++)
+            for (int sb = ssch->sbg_noise[sbg] - ssch->sbx; sb < ssch->sbg_noise[sbg + 1] - ssch->sbx; sb++)
                 ssch->scf_noise_sb[atsg][sb] = ssch->scf_noise_sbg[atsg_noise][sbg];
         }
     }
