@@ -2176,6 +2176,36 @@ static int32_t ac_decode(AC4DecodeContext *s, uint32_t cdf_low,
     return 0;
 }
 
+static int32_t ac_decode_finish(ACState *acs)
+
+{
+    uint32_t fact, ui_bits, ui_val;
+    uint32_t ui_tmp1, ui_tmp2, ui_rev_idx;
+
+    acs->ui_low = acs->ui_offset & (acs->ui_threshold_large-1);
+
+    ui_tmp1 = acs->ui_threshold_large - acs->ui_offset;
+
+    acs->ui_low +=ui_tmp1;
+
+    for (int bit_idx = 1; bit_idx <= acs->ui_range_bits; bit_idx++) {
+        ui_rev_idx = acs->ui_range_bits - bit_idx;
+        fact = 1U << ui_rev_idx;
+        fact = fact - 1U;
+        ui_tmp1 = acs->ui_low + fact;
+        ui_bits = ui_tmp1 >> ui_rev_idx;
+        ui_val = ui_bits << ui_rev_idx;
+        ui_tmp1 = ui_val + fact;
+        ui_tmp2 = acs->ui_range - 1U;
+        ui_tmp2 += acs->ui_low;
+
+        if ((acs->ui_low <= ui_val) && (ui_tmp1 <= ui_tmp2))
+            break;
+    }
+
+    return 0;
+}
+
 static int ssf_ac_data(AC4DecodeContext *s, Substream *ss,
                        SubstreamChannel *ssch)
 {
