@@ -196,6 +196,18 @@ typedef struct SubstreamChannel {
     int     acpl_param_timeslot[2];
     int     acpl_data[11][16];
 
+    int     start_block, end_block;
+    int     stride_flag;
+    int     num_bands;
+    int     predictor_presence[4];
+    int     predictor_lag_delta[4];
+    int     predictor_lag[4];
+    int     variance_preserving[4];
+    int     alloc_offset[4];
+    int     delta[4];
+    int     gain_bits[4];
+    int     env_idx[19];
+
     float   pcm[2048];
 
     DECLARE_ALIGNED(32, float, qmf_filt)[640];
@@ -401,6 +413,11 @@ typedef struct AC4DecodeContext {
     DECLARE_ALIGNED(32, float, cos_stab)[128][64];
     DECLARE_ALIGNED(32, float, sin_stab)[128][64];
 } AC4DecodeContext;
+
+enum StrideFlag {
+    LONG_STRIDE,
+    SHORT_STRIDE,
+};
 
 enum ACPLMode {
     ACPL_FULL,
@@ -2032,12 +2049,102 @@ static int sap_data(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ssch)
     return 0;
 }
 
+static int ssf_st_data(AC4DecodeContext *s, Substream *ss,
+                       SubstreamChannel *ssch, int iframe)
+{
+    GetBitContext *gb = &s->gbc;
+    int num_blocks;
+
+    ssch->env_idx[0] = get_bits(gb, 5);
+    if (iframe == 1 && ssch->stride_flag == SHORT_STRIDE)
+        get_bits(gb, 5);
+
+    if (ssch->stride_flag == SHORT_STRIDE) {
+        for (int block = 0; block < 4; block++)
+            ssch->gain_bits[block] = get_bits(gb, 4);
+    }
+
+    num_blocks = (ssch->stride_flag == SHORT_STRIDE) ? 4 : 1;
+
+    for (int block = 0; block < num_blocks; block++) {
+        if (block >= ssch->start_block && block < ssch->end_block) {
+            if (ssch->predictor_presence[block]) {
+                if (ssch->delta[block])
+                    ssch->predictor_lag_delta[block] = get_bits(gb, 4);
+                else
+                    ssch->predictor_lag[block] = get_bits(gb, 9);
+            }
+        }
+        ssch->variance_preserving[block] = get_bits1(gb);
+        ssch->alloc_offset[block] = get_bits(gb, 5);
+    }
+
+    return 0;
+}
+
+static int ssf_ac_data(AC4DecodeContext *s, Substream *ss,
+                       SubstreamChannel *ssch)
+{
+    return 0;
+}
+
+static int ssf_granule(AC4DecodeContext *s, Substream *ss,
+                       SubstreamChannel *ssch, int iframe)
+{
+    GetBitContext *gb = &s->gbc;
+    int ret;
+
+    ssch->stride_flag = get_bits1(gb);
+    if (iframe)
+        ssch->num_bands = get_bits(gb, 3) + 12;
+
+    ssch->start_block = 0;
+    ssch->end_block = 0;
+    if (ssch->stride_flag == LONG_STRIDE && !iframe)
+        ssch->end_block = 1;
+
+    if (ssch->stride_flag == SHORT_STRIDE) {
+        ssch->end_block = 4;
+        if (iframe)
+            ssch->start_block = 1;
+    }
+
+    for (int block = ssch->start_block; block < ssch->end_block; block++) {
+        ssch->predictor_presence[block] = get_bits1(gb);
+        if (ssch->predictor_presence[block]) {
+            if (ssch->start_block == 1 && block == 1) {
+                ssch->delta[block] = 0;
+            } else {
+                ssch->delta[block] = get_bits1(gb);
+            }
+        }
+    }
+
+    ret = ssf_st_data(s, ss, ssch, iframe);
+    if (ret < 0)
+        return ret;
+
+    return ssf_ac_data(s, ss, ssch);
+}
+
 static int ssf_data(AC4DecodeContext *s, Substream *ss,
                     SubstreamChannel *ssch, int iframe)
 {
-    av_assert0(0);
+    GetBitContext *gb = &s->gbc;
+    int ssf_iframe, ret;
 
-    return 0;
+    if (iframe)
+        ssf_iframe = 1;
+    else
+        ssf_iframe = get_bits1(gb);
+
+    ret = ssf_granule(s, ss, ssch, ssf_iframe);
+    if (ret < 0)
+        return ret;
+    if (s->frame_len_base >= 1536)
+        ret = ssf_granule(s, ss, ssch, 0);
+
+    return ret;
 }
 
 static int asf_section_data(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ssch)
