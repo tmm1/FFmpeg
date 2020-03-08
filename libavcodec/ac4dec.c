@@ -2210,6 +2210,7 @@ static int ssf_ac_data(AC4DecodeContext *s, Substream *ss,
                        SubstreamChannel *ssch)
 {
     ac_init(s, &ssch->acs);
+    ac_decode_finish(&ssch->acs);
 
     return 0;
 }
