@@ -4728,7 +4728,7 @@ static void mono_deq_signal_factors(AC4DecodeContext *s, SubstreamChannel *ssch)
 
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         for (int sbg = 0; sbg < ssch->num_sbg_sig[atsg]; sbg++)
-            ssch->scf_sig_sbg[sbg][atsg] = ssch->sbx * powf(2, ssch->qscf_sig_sbg[sbg][atsg] / a) / 32768.f;
+            ssch->scf_sig_sbg[sbg][atsg] = ssch->sbx * powf(2, ssch->qscf_sig_sbg[sbg][atsg] / a);
 
         if (ssch->aspx_sig_delta_dir[atsg] == 0 &&
             ssch->qscf_sig_sbg[0][atsg] == 0 &&
@@ -5294,7 +5294,7 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         if (ts == ssch->atsg_sig[atsg+1] * s->num_ts_in_ats)
             atsg++;
         /* Loop over QMF subbands */
-        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
+        for (int sb = 0; sb < 0 * ssch->num_sb_aspx; sb++) {
             ssch->Y[0][ts][sb]  = ssch->sig_gain_sb_adj[sb][atsg];
             ssch->Y[1][ts][sb]  = 0;
             complex_mul(&ssch->Y[0][ts][sb], &ssch->Y[1][ts][sb],
@@ -5303,8 +5303,6 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
                         ssch->Q_high[1][ts + ts_offset_hfadj][sb + ssch->sbx]);
         }
     }
-
-    memcpy(ssch->Y_prev, ssch->Y, sizeof(ssch->Y));
 
     /* Loop over time slots */
     for (int ts = ssch->atsg_sig[0]; ts < ssch->atsg_sig[ssch->aspx_num_env]; ts++) {
@@ -5317,7 +5315,7 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         }
     }
 
-    memcpy(ssch->Q_prev, ssch->Q, sizeof(ssch->Q));
+    memcpy(ssch->Y_prev, ssch->Y, sizeof(ssch->Y));
 
     for (int ts = 0; ts < s->num_qmf_timeslots; ts++) {
         /* Loop over QMF subbands */
@@ -5326,6 +5324,8 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
             ssch->Q[1][ts][sb] += ssch->Y[1][ts+s->ts_offset_hfgen][sb];
         }
     }
+
+    memcpy(ssch->Q_prev, ssch->Q, sizeof(ssch->Q));
 }
 
 static int stereo_aspx_processing(AC4DecodeContext *s, Substream *ss)
