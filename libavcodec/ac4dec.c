@@ -36,6 +36,38 @@
 #include "kbdwin.h"
 #include "unary.h"
 
+/* Number of model bits */
+#define SSF_MODEL_BITS 15
+
+/* Model unit for the CDF specification */
+#define SSF_MODEL_UNIT (1U<<(SSF_MODEL_BITS))
+
+/* Number of range bits */
+#define SSF_RANGE_BITS    30
+
+/* Half of the range unit */
+#define SSF_THRESHOLD_LARGE (1U<<((SSF_RANGE_BITS)-1))
+
+/* Quarter of the range unit */
+#define SSF_THRESHOLD_SMALL    (1U<<((SSF_RANGE_BITS)-2))
+
+/* Offset bits */
+#define SSF_OFFSET_BITS 14
+
+typedef struct ACState {
+    uint32_t ui_low;
+    uint32_t ui_range;
+    uint32_t ui_offset;
+    uint32_t ui_offset2;
+
+    uint32_t ui_threshold_small;
+    uint32_t ui_threshold_large;
+    uint32_t ui_model_unit;
+
+    uint32_t ui_range_bits;
+    uint32_t ui_model_bits;
+} ACState;
+
 typedef struct EMDFInfo {
     int     version;
     int     key_id;
@@ -207,6 +239,7 @@ typedef struct SubstreamChannel {
     int     delta[4];
     int     gain_bits[4];
     int     env_idx[19];
+    ACState acs;
 
     float   pcm[2048];
 
@@ -2082,9 +2115,72 @@ static int ssf_st_data(AC4DecodeContext *s, Substream *ss,
     return 0;
 }
 
+static int ac_init(AC4DecodeContext *s, ACState *acs)
+{
+    GetBitContext *gb = &s->gbc;
+
+    acs->ui_model_bits = SSF_MODEL_BITS;
+    acs->ui_model_unit = SSF_MODEL_UNIT;
+    acs->ui_range_bits = SSF_RANGE_BITS;
+    acs->ui_threshold_large = SSF_THRESHOLD_LARGE;
+    acs->ui_threshold_small = SSF_THRESHOLD_SMALL;
+
+    acs->ui_low = 0;
+    acs->ui_range = SSF_THRESHOLD_LARGE;
+
+    acs->ui_offset = get_bits1(gb);
+    for (int index = 1; index < acs->ui_range_bits; index++) {
+        uint32_t ui_tmp = get_bits1(gb);
+
+        acs->ui_offset <<= 1;
+        acs->ui_offset += ui_tmp;
+    }
+
+    acs->ui_offset2 = acs->ui_offset;
+
+    return 0;
+}
+
+static int32_t ac_decode(AC4DecodeContext *s, uint32_t cdf_low,
+                         uint32_t cdf_high,
+                         ACState *acs)
+{
+    GetBitContext *gb = &s->gbc;
+    uint32_t ui_tmp1, ui_tmp2;
+    uint32_t ui_range;
+
+    ui_range = acs->ui_range >> acs->ui_model_bits;
+    ui_tmp1 = ui_range * cdf_low;
+    acs->ui_offset = acs->ui_offset - ui_tmp1;
+
+    if (cdf_high < acs->ui_model_unit) {
+        ui_tmp2 = cdf_high - cdf_low;
+        acs->ui_range = ui_range * ui_tmp2;
+    } else {
+        acs->ui_range = acs->ui_range - ui_tmp1;
+    }
+
+    // denormalize
+    while (acs->ui_range <= acs->ui_threshold_small) {
+        /* Read a single bit from the bitstream */
+        uint32_t ui_tmp1 = get_bits1(gb);
+
+        acs->ui_range <<= 1;
+        acs->ui_offset <<= 1;
+        acs->ui_offset += ui_tmp1;
+        acs->ui_offset2 <<= 1;
+        if (acs->ui_offset & 1)
+            acs->ui_offset2++;
+    }
+
+    return 0;
+}
+
 static int ssf_ac_data(AC4DecodeContext *s, Substream *ss,
                        SubstreamChannel *ssch)
 {
+    ac_init(s, &ssch->acs);
+
     return 0;
 }
 
