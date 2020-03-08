@@ -5358,7 +5358,7 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
                 denom += ssch->est_sig_sb[atsg][sb];
             }
 
-            ssch->max_sig_gain_sbg[sbg][atsg] = sqrtf(nom/denom) * LIM_GAIN;
+            ssch->max_sig_gain_sbg[atsg][sbg] = sqrtf(nom/denom) * LIM_GAIN;
         }
 
         int sbg = 0;
@@ -5366,7 +5366,7 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             if (sb == ssch->sbg_lim[sbg+1]-ssch->sbx)
                 sbg++;
-            ssch->max_sig_gain_sb[atsg][sb] = FFMIN(ssch->max_sig_gain_sbg[sbg][atsg], MAX_SIG_GAIN);
+            ssch->max_sig_gain_sb[atsg][sb] = FFMIN(ssch->max_sig_gain_sbg[atsg][sbg], MAX_SIG_GAIN);
         }
     }
 
@@ -5406,7 +5406,7 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
                       || (atsg == ssch->aspx_tsg_ptr) || (atsg == p_sine_at_end)))
                     denom += powf(ssch->noise_lev_sb_lim[atsg][sb], 2);
             }
-            ssch->boost_fact_sbg[sbg][atsg] = sqrtf(nom/denom);
+            ssch->boost_fact_sbg[atsg][sbg] = sqrtf(nom/denom);
         }
     }
 
@@ -5418,7 +5418,7 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             if (sb == ssch->sbg_lim[sbg+1]-ssch->sbx)
                 sbg++;
-            ssch->boost_fact_sb[atsg][sb] = FFMIN(ssch->boost_fact_sbg[sbg][atsg], MAX_BOOST_FACT);
+            ssch->boost_fact_sb[atsg][sb] = FFMIN(ssch->boost_fact_sbg[atsg][sbg], MAX_BOOST_FACT);
         }
     }
 
