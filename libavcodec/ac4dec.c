@@ -65,6 +65,8 @@ typedef struct SubstreamChannelParameters {
 typedef struct SubstreamChannel {
     SubstreamChannelParameters scp;
 
+    int     master_reset;
+
     int     sap_mode;
 
     int     N_prev;
@@ -185,8 +187,9 @@ typedef struct SubstreamChannel {
     float   sine_lev_sb_adj[42][64];
 
     float   qmf_sine[2][42][64];
-    int     sine_idx[64][42];
-    int     sine_idx_prev[64][42];
+    float   qmf_noise[2][42][64];
+    int8_t  sine_idx_prev[42][64];
+    int16_t noise_idx_prev[42][64];
 
     int     acpl_interpolation_type;
     int     acpl_num_param_sets_cod;
@@ -369,6 +372,7 @@ typedef struct AC4DecodeContext {
     int             ts_offset_hfgen;
     int             transform_length;
     int             iframe_global;
+    int             first_frame;
     int             have_iframe;
     int             nb_presentations;
     int             payload_base;
@@ -518,6 +522,7 @@ static av_cold int ac4_decode_init(AVCodecContext *avctx)
     int ret;
 
     s->avctx = avctx;
+    s->first_frame = 1;
 
     avctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
 
@@ -2809,14 +2814,14 @@ static int cmpints(const void *p1, const void *p2)
 
 static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ssch)
 {
-    int master_reset = (ss->prev_aspx_start_freq != ss->aspx_start_freq) +
-                       (ss->prev_aspx_stop_freq != ss->aspx_stop_freq) +
-                       (ss->prev_aspx_master_freq_scale != ss->aspx_master_freq_scale);
     int sb, sbg = 0, goal_sb, msb, usb;
     int source_band_low;
     int idx[6];
 
-    if (master_reset) {
+    ssch->master_reset = (ss->prev_aspx_start_freq != ss->aspx_start_freq) +
+                         (ss->prev_aspx_stop_freq != ss->aspx_stop_freq) +
+                         (ss->prev_aspx_master_freq_scale != ss->aspx_master_freq_scale);
+    if (ssch->master_reset) {
         if (ss->aspx_master_freq_scale == 1) {
             ssch->num_sbg_master = 22 - 2 * ss->aspx_start_freq - 2 * ss->aspx_stop_freq;
             for (int sbg = 0; sbg <= ssch->num_sbg_master; sbg++) {
@@ -5205,14 +5210,49 @@ static int sine_idx(int sb, int ts, AC4DecodeContext *s, SubstreamChannel *ssch)
 {
     int index;
 
-    if (s->have_iframe) {
+    if (s->first_frame) {
         index = 1;
+        s->first_frame = 0;
     } else {
-        index = (ssch->sine_idx_prev[sb][ts] + 1) % 4;
+        index = (ssch->sine_idx_prev[ts][sb] + 1) % 4;
     }
     index += ts - ssch->atsg_sig[0];
 
     return index % 4;
+}
+
+static int noise_idx(int sb, int ts, AC4DecodeContext *s, SubstreamChannel *ssch)
+{
+    int index;
+
+    if (ssch->master_reset) {
+        index = 0;
+    } else {
+        index = ssch->noise_idx_prev[ts][sb];
+    }
+    index += ssch->num_sb_aspx * (ts - ssch->atsg_sig[0]);
+    index += sb + 1;
+
+    return index % 512;
+}
+
+static void generate_noise(AC4DecodeContext *s, SubstreamChannel *ssch)
+{
+    int atsg = 0;
+    /* Loop over QMF time slots */
+    for (int ts = ssch->atsg_sig[0] * s->num_ts_in_ats;
+         ts < ssch->atsg_sig[ssch->aspx_num_env] * s->num_ts_in_ats; ts++) {
+        if (ts == ssch->atsg_sig[atsg+1] * s->num_ts_in_ats)
+            atsg++;
+        /* Loop over QMF subbands in A-SPX */
+        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
+            int idx;
+
+            ssch->noise_idx_prev[ts][sb] = idx = noise_idx(sb, ts, s, ssch);
+            ssch->qmf_noise[0][ts][sb] = ssch->noise_lev_sb_adj[sb][atsg] * aspx_noise[idx][0];
+            ssch->qmf_noise[1][ts][sb] = ssch->noise_lev_sb_adj[sb][atsg] * aspx_noise[idx][1];
+        }
+    }
 }
 
 static void generate_tones(AC4DecodeContext *s, SubstreamChannel *ssch)
@@ -5227,7 +5267,7 @@ static void generate_tones(AC4DecodeContext *s, SubstreamChannel *ssch)
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             int idx;
 
-            ssch->sine_idx[sb][ts] = idx = sine_idx(sb, ts, s, ssch);
+            ssch->sine_idx_prev[ts][sb] = idx = sine_idx(sb, ts, s, ssch);
             ssch->qmf_sine[0][ts][sb]  = ssch->sine_lev_sb_adj[sb][atsg];
             ssch->qmf_sine[0][ts][sb] *= SineTable[0][idx];
             ssch->qmf_sine[1][ts][sb]  = ssch->sine_lev_sb_adj[sb][atsg] * powf(-1, sb + ssch->sbx);
@@ -5272,6 +5312,8 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             ssch->Y[0][ts][sb] += ssch->qmf_sine[0][ts][sb];
             ssch->Y[1][ts][sb] += ssch->qmf_sine[1][ts][sb];
+            ssch->Y[0][ts][sb] += ssch->qmf_noise[0][ts][sb];
+            ssch->Y[1][ts][sb] += ssch->qmf_noise[1][ts][sb];
         }
     }
 
@@ -5321,6 +5363,8 @@ static int stereo_aspx_processing(AC4DecodeContext *s, Substream *ss)
         add_sinusoids(s, &ss->ssch[1]);
         generate_tones(s, &ss->ssch[0]);
         generate_tones(s, &ss->ssch[1]);
+        generate_noise(s, &ss->ssch[0]);
+        generate_noise(s, &ss->ssch[1]);
         assemble_hf_signal(s, &ss->ssch[0]);
         assemble_hf_signal(s, &ss->ssch[1]);
     }
