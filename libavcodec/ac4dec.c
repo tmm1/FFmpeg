@@ -1503,7 +1503,7 @@ static int acpl_config_2ch(AC4DecodeContext *s, Substream *ss)
     return 0;
 }
 
-static int aspx_config(AC4DecodeContext *s, Substream *ss)
+static void aspx_config(AC4DecodeContext *s, Substream *ss)
 {
     GetBitContext *gb = &s->gbc;
 
@@ -1520,8 +1520,6 @@ static int aspx_config(AC4DecodeContext *s, Substream *ss)
     ss->aspx_noise_sbg = get_bits(gb, 2);
     ss->aspx_num_env_bits_fixfix = get_bits1(gb);
     ss->aspx_freq_res_mode = get_bits(gb, 2);
-
-    return 0;
 }
 
 static int get_transfer_length_from_idx(AC4DecodeContext *s, int idx)
@@ -5524,7 +5522,7 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         if (ts == ssch->atsg_sig[atsg+1] * s->num_ts_in_ats)
             atsg++;
         /* Loop over QMF subbands */
-        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
+        for (int sb = 0; sb < 0 * ssch->num_sb_aspx; sb++) {
             ssch->Y[0][ts][sb] = ssch->sig_gain_sb_adj[sb][atsg];
             ssch->Y[1][ts][sb] = 0;
             complex_mul(&ssch->Y[0][ts][sb], &ssch->Y[1][ts][sb],
@@ -5556,6 +5554,30 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
             ssch->Q[1][ts][sb] += ssch->Y[1][ts+s->ts_offset_hfgen][sb];
         }
     }
+}
+
+static int mono_aspx_processing(AC4DecodeContext *s, Substream *ss)
+{
+    if (ss->codec_mode == CM_ASPX) {
+        aspx_processing(s, &ss->ssch[0]);
+        get_qsignal_scale_factors(s, &ss->ssch[0], 0);
+        get_qnoise_scale_factors(s, &ss->ssch[0], 0);
+        mono_deq_signal_factors(s, &ss->ssch[0]);
+        mono_deq_noise_factors(s, &ss->ssch[0]);
+        preflattening(s, &ss->ssch[0]);
+        get_covariance(s, &ss->ssch[0]);
+        get_alphas(s, &ss->ssch[0]);
+        get_chirps(s, &ss->ssch[0]);
+        create_high_signal(s, ss, &ss->ssch[0]);
+        estimate_spectral_envelopes(s, ss, &ss->ssch[0]);
+        map_signoise(s, &ss->ssch[0]);
+        add_sinusoids(s, &ss->ssch[0]);
+        generate_tones(s, &ss->ssch[0]);
+        generate_noise(s, &ss->ssch[0]);
+        assemble_hf_signal(s, &ss->ssch[0]);
+    }
+
+    return 0;
 }
 
 static int stereo_aspx_processing(AC4DecodeContext *s, Substream *ss)
@@ -5703,6 +5725,7 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
 
     switch (ssinfo->channel_mode) {
     case 0:
+        mono_aspx_processing(s, &s->substream);
         break;
     case 1:
         stereo_aspx_processing(s, &s->substream);
