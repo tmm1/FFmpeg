@@ -1484,7 +1484,7 @@ static const float new_chirp_tab[4][4] = {
     { 0.98, 0.98, 0.98, 0.98, },
 };
 
-static const int8_t SineTable[2][4] = {
+static const int8_t aspx_sine[2][4] = {
     { 1, 0, -1,  0 }, { 0, 1,  0, -1 },
 };
 

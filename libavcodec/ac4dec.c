@@ -5269,9 +5269,9 @@ static void generate_tones(AC4DecodeContext *s, SubstreamChannel *ssch)
 
             ssch->sine_idx_prev[ts][sb] = idx = sine_idx(sb, ts, s, ssch);
             ssch->qmf_sine[0][ts][sb]  = ssch->sine_lev_sb_adj[sb][atsg];
-            ssch->qmf_sine[0][ts][sb] *= SineTable[0][idx];
+            ssch->qmf_sine[0][ts][sb] *= aspx_sine[0][idx];
             ssch->qmf_sine[1][ts][sb]  = ssch->sine_lev_sb_adj[sb][atsg] * powf(-1, sb + ssch->sbx);
-            ssch->qmf_sine[1][ts][sb] *= SineTable[1][idx];
+            ssch->qmf_sine[1][ts][sb] *= aspx_sine[1][idx];
         }
     }
 }
@@ -5475,7 +5475,6 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
     case 0:
         break;
     case 1:
-        break;
         stereo_aspx_processing(s, &s->substream);
         break;
     case 3:
