@@ -5285,7 +5285,7 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
             /* Map sinusoid markers to QMF subbands */
             for (int sb = ssch->sbg_sig_highres[sbg]-ssch->sbx; sb < ssch->sbg_sig_highres[sbg+1]-ssch->sbx; sb++) {
                 if ((sb == sb_mid) && ((atsg >= ssch->aspx_tsg_ptr) || (p_sine_at_end == 0)
-                                       || ssch->sine_idx_sb_prev[sb][ssch->aspx_num_env_prev-1])) {
+                                       || ssch->sine_idx_sb_prev[ssch->aspx_num_env_prev-1][sb])) {
                     ssch->sine_idx_sb[atsg][sb] = ssch->aspx_add_harmonic[sbg];
                 } else {
                     ssch->sine_idx_sb[atsg][sb] = 0;
