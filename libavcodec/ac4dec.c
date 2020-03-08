@@ -188,15 +188,15 @@ typedef struct SubstreamChannel {
 
     int     aspx_data[2][32][64];
 
-    int     qscf_prev[32][64]; // XXX
-    int     qscf_sig_sbg[32][64]; // XXX
-    int     qscf_sig_sbg_prev[32][64]; // XXX
-    int     qscf_noise_sbg[32][64]; // XXX
+    int     qscf_prev[32][64];
+    int     qscf_sig_sbg[32][64];
+    int     qscf_sig_sbg_prev[32][64];
+    int     qscf_noise_sbg[32][64];
 
-    float   scf_sig_sbg[32][64]; // XXX
-    float   scf_sig_sb[32][64]; // XXX
-    float   scf_noise_sbg[32][64]; // XXX
-    float   scf_noise_sb[32][64]; // XXX
+    float   scf_sig_sbg[32][64];
+    float   scf_sig_sb[32][64];
+    float   scf_noise_sbg[32][64];
+    float   scf_noise_sb[32][64];
 
     float   gain_vec[32];
     float   chirp_arr[6];
@@ -731,8 +731,8 @@ static av_cold int ac4_decode_init(AVCodecContext *avctx)
         for (int n = 0; n < 128; n++) {
             s->cos_atab[i][n] = cosf(M_PI/128*(i+0.5)*(2*n-1));
             s->sin_atab[i][n] = sinf(M_PI/128*(i+0.5)*(2*n-1));
-            s->cos_stab[n][i] = cosf(M_PI/128*(i+0.5)*(2*n-255)) / 64;
-            s->sin_stab[n][i] = sinf(M_PI/128*(i+0.5)*(2*n-255)) / 64;
+            s->cos_stab[n][i] = cosf(M_PI/128*(i+0.5)*(2*n-255)) / 64.f;
+            s->sin_stab[n][i] = sinf(M_PI/128*(i+0.5)*(2*n-255)) / 64.f;
         }
     }
 
@@ -4858,26 +4858,26 @@ static int get_qsignal_scale_factors(AC4DecodeContext *s, SubstreamChannel *ssch
         for (int sbg = 0; sbg < ssch->num_sbg_sig[atsg]; sbg++) {
             if (atsg == 0) {
                 ssch->atsg_freqres_prev[atsg] = ssch->atsg_freqres[ssch->aspx_num_env_prev - 1];
-                ssch->qscf_prev[sbg][atsg] = ssch->qscf_sig_sbg_prev[sbg][ssch->aspx_num_env_prev - 1];
+                ssch->qscf_prev[atsg][sbg] = ssch->qscf_sig_sbg_prev[ssch->aspx_num_env_prev - 1][sbg];
             } else {
                 ssch->atsg_freqres_prev[atsg] = ssch->atsg_freqres[atsg-1];
-                ssch->qscf_prev[sbg][atsg] = ssch->qscf_sig_sbg[sbg][atsg-1];
+                ssch->qscf_prev[atsg][sbg] = ssch->qscf_sig_sbg[atsg-1][sbg];
             }
             if (ssch->aspx_sig_delta_dir[atsg] == 0) { /* FREQ */
-                ssch->qscf_sig_sbg[sbg][atsg] = 0;
+                ssch->qscf_sig_sbg[atsg][sbg] = 0;
                 for (int i = 0; i <= sbg; i++) {
-                    ssch->qscf_sig_sbg[sbg][atsg] += delta * ssch->aspx_data[0][atsg][i];
+                    ssch->qscf_sig_sbg[atsg][sbg] += delta * ssch->aspx_data[0][atsg][i];
                 }
             } else { /* TIME */
                 if (ssch->atsg_freqres[atsg] == ssch->atsg_freqres_prev[atsg]) {
-                    ssch->qscf_sig_sbg[sbg][atsg]  = ssch->qscf_prev[sbg][atsg];
-                    ssch->qscf_sig_sbg[sbg][atsg] += delta * ssch->aspx_data[0][atsg][sbg];
+                    ssch->qscf_sig_sbg[atsg][sbg]  = ssch->qscf_prev[atsg][sbg];
+                    ssch->qscf_sig_sbg[atsg][sbg] += delta * ssch->aspx_data[0][atsg][sbg];
                 } else if ((ssch->atsg_freqres[atsg] == 0) && (ssch->atsg_freqres_prev[atsg] == 1)) {
-                    ssch->qscf_sig_sbg[sbg][atsg]  = ssch->qscf_prev[sbg_idx_low2high[sbg]][atsg];
-                    ssch->qscf_sig_sbg[sbg][atsg] += delta * ssch->aspx_data[0][atsg][sbg];
+                    ssch->qscf_sig_sbg[atsg][sbg]  = ssch->qscf_prev[atsg][sbg_idx_low2high[sbg]];
+                    ssch->qscf_sig_sbg[atsg][sbg] += delta * ssch->aspx_data[0][atsg][sbg];
                 } else if ((ssch->atsg_freqres[atsg] == 1) && (ssch->atsg_freqres_prev[atsg] == 0)) {
-                    ssch->qscf_sig_sbg[sbg][atsg]  = ssch->qscf_prev[sbg_idx_high2low[sbg]][atsg];
-                    ssch->qscf_sig_sbg[sbg][atsg] += delta * ssch->aspx_data[0][atsg][sbg];
+                    ssch->qscf_sig_sbg[atsg][sbg]  = ssch->qscf_prev[atsg][sbg_idx_high2low[sbg]];
+                    ssch->qscf_sig_sbg[atsg][sbg] += delta * ssch->aspx_data[0][atsg][sbg];
                 }
             }
         }
@@ -4896,18 +4896,18 @@ static int get_qnoise_scale_factors(AC4DecodeContext *s, SubstreamChannel *ssch,
     for (int atsg = 0; atsg < ssch->aspx_num_noise; atsg++) {
         /* Loop over noise subband groups */
         for (int sbg = 0; sbg < ssch->num_sbg_noise; sbg++) {
-            ssch->qscf_noise_sbg[sbg][atsg] = 0;
+            ssch->qscf_noise_sbg[atsg][sbg] = 0;
             if (ssch->aspx_noise_delta_dir[atsg] == 0) { /* FREQ */
                 for (int i = 0; i <= sbg; i++) {
-                    ssch->qscf_noise_sbg[sbg][atsg] += delta * ssch->aspx_data[1][atsg][sbg];
+                    ssch->qscf_noise_sbg[atsg][sbg] += delta * ssch->aspx_data[1][atsg][sbg];
                 }
             } else { /* TIME */
                 if (atsg == 0) {
-                    ssch->qscf_noise_sbg[sbg][atsg]  = ssch->qscf_prev[sbg][ssch->aspx_num_noise_prev-1];
-                    ssch->qscf_noise_sbg[sbg][atsg] += delta * ssch->aspx_data[1][atsg][sbg];
+                    ssch->qscf_noise_sbg[atsg][sbg]  = ssch->qscf_prev[ssch->aspx_num_noise_prev-1][sbg];
+                    ssch->qscf_noise_sbg[atsg][sbg] += delta * ssch->aspx_data[1][atsg][sbg];
                 } else {
-                    ssch->qscf_noise_sbg[sbg][atsg]  = ssch->qscf_noise_sbg[sbg][atsg-1];
-                    ssch->qscf_noise_sbg[sbg][atsg] += delta * ssch->aspx_data[1][atsg][sbg];
+                    ssch->qscf_noise_sbg[atsg][sbg]  = ssch->qscf_noise_sbg[atsg-1][sbg];
+                    ssch->qscf_noise_sbg[atsg][sbg] += delta * ssch->aspx_data[1][atsg][sbg];
                 }
             }
         }
@@ -4956,12 +4956,12 @@ static void mono_deq_signal_factors(AC4DecodeContext *s, SubstreamChannel *ssch)
 
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         for (int sbg = 0; sbg < ssch->num_sbg_sig[atsg]; sbg++)
-            ssch->scf_sig_sbg[sbg][atsg] = ssch->sbx * powf(2, ssch->qscf_sig_sbg[sbg][atsg] / a);
+            ssch->scf_sig_sbg[atsg][sbg] = 64.f * powf(2, ssch->qscf_sig_sbg[atsg][sbg] / a);
 
         if (ssch->aspx_sig_delta_dir[atsg] == 0 &&
-            ssch->qscf_sig_sbg[0][atsg] == 0 &&
-            ssch->scf_sig_sbg[1][atsg] < 0) {
-            ssch->scf_sig_sbg[0][atsg] = ssch->scf_sig_sbg[1][atsg];
+            ssch->qscf_sig_sbg[atsg][0] == 0 &&
+            ssch->scf_sig_sbg[atsg][1] < 0) {
+            ssch->scf_sig_sbg[atsg][0] = ssch->scf_sig_sbg[atsg][1];
         }
     }
 }
@@ -4972,7 +4972,7 @@ static void mono_deq_noise_factors(AC4DecodeContext *s, SubstreamChannel *ssch)
 
     for (int atsg = 0; atsg < ssch->aspx_num_noise; atsg++) {
         for (int sbg = 0; sbg < ssch->num_sbg_noise; sbg++)
-            ssch->scf_noise_sbg[sbg][atsg] = powf(2, NOISE_FLOOR_OFFSET - ssch->qscf_noise_sbg[sbg][atsg]);
+            ssch->scf_noise_sbg[atsg][sbg] = powf(2, NOISE_FLOOR_OFFSET - ssch->qscf_noise_sbg[atsg][sbg]);
     }
 }
 
@@ -4986,23 +4986,23 @@ static void stereo_deq_signoise_factors(AC4DecodeContext *s,
 
     for (int atsg = 0; atsg < ssch0->aspx_num_env; atsg++) {
         for (int sbg = 0; sbg < ssch0->num_sbg_sig[atsg]; sbg++) {
-            float nom = ssch0->sbx * powf(2, ssch0->qscf_sig_sbg[sbg][atsg] / a + 1);
-            float denom_a = 1 + powf(2, PAN_OFFSET - ssch1->qscf_sig_sbg[sbg][atsg] / a);
-            float denom_b = 1 + powf(2, ssch1->qscf_sig_sbg[sbg][atsg] / a - PAN_OFFSET);
+            float nom = 64.f * powf(2, ssch0->qscf_sig_sbg[atsg][sbg] / a + 1);
+            float denom_a = 1 + powf(2, PAN_OFFSET - ssch1->qscf_sig_sbg[atsg][sbg] / a);
+            float denom_b = 1 + powf(2, ssch1->qscf_sig_sbg[atsg][sbg] / a - PAN_OFFSET);
 
-            ssch0->scf_sig_sbg[sbg][atsg] = nom / denom_a;
-            ssch1->scf_sig_sbg[sbg][atsg] = nom / denom_b;
+            ssch0->scf_sig_sbg[atsg][sbg] = nom / denom_a;
+            ssch1->scf_sig_sbg[atsg][sbg] = nom / denom_b;
         }
     }
 
     for (int atsg = 0; atsg < ssch0->aspx_num_noise; atsg++) {
         for (int sbg = 0; sbg < ssch0->num_sbg_noise; sbg++) {
-            float nom = powf(2, NOISE_FLOOR_OFFSET - ssch0->qscf_noise_sbg[sbg][atsg] + 1);
-            float denom_a = 1 + powf(2, PAN_OFFSET - ssch1->qscf_noise_sbg[sbg][atsg]);
-            float denom_b = 1 + powf(2, ssch1->qscf_noise_sbg[sbg][atsg] - PAN_OFFSET);
+            float nom = powf(2, NOISE_FLOOR_OFFSET - ssch0->qscf_noise_sbg[atsg][sbg] + 1);
+            float denom_a = 1 + powf(2, PAN_OFFSET - ssch1->qscf_noise_sbg[atsg][sbg]);
+            float denom_b = 1 + powf(2, ssch1->qscf_noise_sbg[atsg][sbg] - PAN_OFFSET);
 
-            ssch0->scf_noise_sbg[sbg][atsg] = nom / denom_a;
-            ssch1->scf_noise_sbg[sbg][atsg] = nom / denom_b;
+            ssch0->scf_noise_sbg[atsg][sbg] = nom / denom_a;
+            ssch1->scf_noise_sbg[atsg][sbg] = nom / denom_b;
         }
     }
 }
@@ -5236,7 +5236,7 @@ static void estimate_spectral_envelopes(AC4DecodeContext *s, Substream *ss, Subs
             } else {
                 est_sig /= ssch->atsg_sig[atsg+1] - ssch->atsg_sig[atsg];
             }
-            ssch->est_sig_sb[sb][atsg] = est_sig;
+            ssch->est_sig_sb[atsg][sb] = est_sig;
         }
     }
 }
@@ -5251,7 +5251,7 @@ static void map_signoise(AC4DecodeContext *s, SubstreamChannel *ssch)
 
         for (int sbg = 0; sbg < ssch->num_sbg_sig[atsg]; sbg++) {
             for (int sb = ssch->sbg_sig[atsg][sbg]-ssch->sbx; sb < ssch->sbg_sig[atsg][sbg+1]-ssch->sbx; sb++)
-                ssch->scf_sig_sb[sb][atsg] = ssch->scf_sig_sbg[sbg][atsg];
+                ssch->scf_sig_sb[atsg][sb] = ssch->scf_sig_sbg[atsg][sbg];
 
         }
 
@@ -5261,7 +5261,7 @@ static void map_signoise(AC4DecodeContext *s, SubstreamChannel *ssch)
         /* Map Noise Floors from subband groups to QMF subbands, and to signal envelopes */
         for (int sbg = 0; sbg < ssch->num_sbg_noise; sbg++) {
             for (int sb = ssch->sbg_noise[sbg]-ssch->sbx; sb < ssch->sbg_noise[sbg+1]-ssch->sbx; sb++)
-                ssch->scf_noise_sb[sb][atsg] = ssch->scf_noise_sbg[sbg][atsg_noise];
+                ssch->scf_noise_sb[atsg][sb] = ssch->scf_noise_sbg[atsg_noise][sbg];
         }
     }
 }
@@ -5286,9 +5286,9 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
             for (int sb = ssch->sbg_sig_highres[sbg]-ssch->sbx; sb < ssch->sbg_sig_highres[sbg+1]-ssch->sbx; sb++) {
                 if ((sb == sb_mid) && ((atsg >= ssch->aspx_tsg_ptr) || (p_sine_at_end == 0)
                                        || ssch->sine_idx_sb_prev[sb][ssch->aspx_num_env_prev-1])) {
-                    ssch->sine_idx_sb[sb][atsg] = ssch->aspx_add_harmonic[sbg];
+                    ssch->sine_idx_sb[atsg][sb] = ssch->aspx_add_harmonic[sbg];
                 } else {
-                    ssch->sine_idx_sb[sb][atsg] = 0;
+                    ssch->sine_idx_sb[atsg][sb] = 0;
                 }
             }
         }
@@ -5302,13 +5302,13 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
             int sine_present = 0;
             /* Additional sinusoid present in SF band? */
             for (int sb = ssch->sbg_sig[atsg][sbg]-ssch->sbx; sb < ssch->sbg_sig[atsg][sbg+1]-ssch->sbx; sb++) {
-                if (ssch->sine_idx_sb[sb][atsg] == 1)
+                if (ssch->sine_idx_sb[atsg][sb] == 1)
                     sine_present = 1;
             }
 
             /* Mark all subbands in current subband group accordingly */
             for (int sb = ssch->sbg_sig[atsg][sbg]-ssch->sbx; sb < ssch->sbg_sig[atsg][sbg+1]-ssch->sbx; sb++) {
-                ssch->sine_area_sb[sb][atsg] = sine_present;
+                ssch->sine_area_sb[atsg][sb] = sine_present;
             }
         }
     }
@@ -5317,10 +5317,10 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         /* Loop over QMF subbands in A-SPX range */
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
-            float sig_noise_fact = ssch->scf_sig_sb[sb][atsg] / (1+ssch->scf_noise_sb[sb][atsg]);
+            float sig_noise_fact = ssch->scf_sig_sb[atsg][sb] / (1+ssch->scf_noise_sb[atsg][sb]);
 
-            ssch->sine_lev_sb[sb][atsg] = sqrtf(sig_noise_fact * ssch->sine_idx_sb[sb][atsg]);
-            ssch->noise_lev_sb[sb][atsg] = sqrtf(sig_noise_fact * ssch->scf_noise_sb[sb][atsg]);
+            ssch->sine_lev_sb[atsg][sb] = sqrtf(sig_noise_fact * ssch->sine_idx_sb[atsg][sb]);
+            ssch->noise_lev_sb[atsg][sb] = sqrtf(sig_noise_fact * ssch->scf_noise_sb[atsg][sb]);
         }
     }
 
@@ -5330,15 +5330,15 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         /* Loop over QMF subbands in A-SPX range */
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
-            if (ssch->sine_area_sb[sb][atsg] == 0) {
-                float denom = EPSILON + ssch->est_sig_sb[sb][atsg];
+            if (ssch->sine_area_sb[atsg][sb] == 0) {
+                float denom = EPSILON + ssch->est_sig_sb[atsg][sb];
                 if (!(atsg == ssch->aspx_tsg_ptr || atsg == p_sine_at_end))
-                    denom *= (1 + ssch->scf_noise_sb[sb][atsg]);
-                ssch->sig_gain_sb[sb][atsg] = sqrtf(ssch->scf_sig_sb[sb][atsg] / denom);
+                    denom *= (1 + ssch->scf_noise_sb[atsg][sb]);
+                ssch->sig_gain_sb[atsg][sb] = sqrtf(ssch->scf_sig_sb[atsg][sb] / denom);
             } else {
-                float denom = EPSILON + ssch->est_sig_sb[sb][atsg];
-                denom *= 1 + ssch->scf_noise_sb[sb][atsg];
-                ssch->sig_gain_sb[sb][atsg] = sqrtf(ssch->scf_sig_sb[sb][atsg]*ssch->scf_noise_sb[sb][atsg] / denom);
+                float denom = EPSILON + ssch->est_sig_sb[atsg][sb];
+                denom *= 1 + ssch->scf_noise_sb[atsg][sb];
+                ssch->sig_gain_sb[atsg][sb] = sqrtf(ssch->scf_sig_sb[atsg][sb] * ssch->scf_noise_sb[atsg][sb] / denom);
             }
         }
     }
@@ -5354,8 +5354,8 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
             float nom = 0;
             float denom = EPSILON0;
             for (int sb = ssch->sbg_lim[sbg]-ssch->sbx; sb < ssch->sbg_lim[sbg+1]-1-ssch->sbx; sb++) {
-                nom += ssch->scf_sig_sb[sb][atsg];
-                denom += ssch->est_sig_sb[sb][atsg];
+                nom += ssch->scf_sig_sb[atsg][sb];
+                denom += ssch->est_sig_sb[atsg][sb];
             }
 
             ssch->max_sig_gain_sbg[sbg][atsg] = sqrtf(nom/denom) * LIM_GAIN;
@@ -5366,7 +5366,7 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             if (sb == ssch->sbg_lim[sbg+1]-ssch->sbx)
                 sbg++;
-            ssch->max_sig_gain_sb[sb][atsg] = FFMIN(ssch->max_sig_gain_sbg[sbg][atsg], MAX_SIG_GAIN);
+            ssch->max_sig_gain_sb[atsg][sb] = FFMIN(ssch->max_sig_gain_sbg[sbg][atsg], MAX_SIG_GAIN);
         }
     }
 
@@ -5374,10 +5374,10 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         /* Loop over QMF subbands */
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
-            float tmp = ssch->noise_lev_sb[sb][atsg];
+            float tmp = ssch->noise_lev_sb[atsg][sb];
 
-            tmp *= ssch->max_sig_gain_sb[sb][atsg] / ssch->sig_gain_sb[sb][atsg];
-            ssch->noise_lev_sb_lim[sb][atsg] = FFMIN(ssch->noise_lev_sb[sb][atsg], tmp);
+            tmp *= ssch->max_sig_gain_sb[atsg][sb] / ssch->sig_gain_sb[atsg][sb];
+            ssch->noise_lev_sb_lim[atsg][sb] = FFMIN(ssch->noise_lev_sb[atsg][sb], tmp);
         }
     }
 
@@ -5385,8 +5385,8 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         /* Loop over QMF subbands */
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
-            ssch->sig_gain_sb_lim[sb][atsg] = FFMIN(ssch->sig_gain_sb[sb][atsg],
-                                                    ssch->max_sig_gain_sb[sb][atsg]);
+            ssch->sig_gain_sb_lim[atsg][sb] = FFMIN(ssch->sig_gain_sb[atsg][sb],
+                                                    ssch->max_sig_gain_sb[atsg][sb]);
         }
     }
 
@@ -5399,12 +5399,12 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
             nom = denom = EPSILON0;
             /* Loop over subbands */
             for (int sb = ssch->sbg_lim[sbg]-ssch->sbx; sb < ssch->sbg_lim[sbg+1]-1-ssch->sbx; sb++) {
-                nom   += ssch->scf_sig_sb[sb][atsg];
-                denom += ssch->est_sig_sb[sb][atsg] * powf(ssch->sig_gain_sb_lim[sb][atsg], 2);
-                denom += powf(ssch->sine_lev_sb[sb][atsg], 2);
-                if (!((ssch->sine_lev_sb[sb][atsg] != 0)
+                nom   += ssch->scf_sig_sb[atsg][sb];
+                denom += ssch->est_sig_sb[atsg][sb] * powf(ssch->sig_gain_sb_lim[atsg][sb], 2);
+                denom += powf(ssch->sine_lev_sb[atsg][sb], 2);
+                if (!((ssch->sine_lev_sb[atsg][sb] != 0)
                       || (atsg == ssch->aspx_tsg_ptr) || (atsg == p_sine_at_end)))
-                    denom += powf(ssch->noise_lev_sb_lim[sb][atsg], 2);
+                    denom += powf(ssch->noise_lev_sb_lim[atsg][sb], 2);
             }
             ssch->boost_fact_sbg[sbg][atsg] = sqrtf(nom/denom);
         }
@@ -5418,7 +5418,7 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             if (sb == ssch->sbg_lim[sbg+1]-ssch->sbx)
                 sbg++;
-            ssch->boost_fact_sb[sb][atsg] = FFMIN(ssch->boost_fact_sbg[sbg][atsg], MAX_BOOST_FACT);
+            ssch->boost_fact_sb[atsg][sb] = FFMIN(ssch->boost_fact_sbg[sbg][atsg], MAX_BOOST_FACT);
         }
     }
 
@@ -5426,10 +5426,10 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         /* Loop over QMF subbands */
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
-            float boost_fact                 = ssch->boost_fact_sb[sb][atsg];
-            ssch->sig_gain_sb_adj[sb][atsg]  = ssch->sig_gain_sb_lim[sb][atsg] * boost_fact;
-            ssch->noise_lev_sb_adj[sb][atsg] = ssch->noise_lev_sb_lim[sb][atsg] * boost_fact;
-            ssch->sine_lev_sb_adj[sb][atsg]  = ssch->sine_lev_sb[sb][atsg] * boost_fact;
+            float boost_fact                 = ssch->boost_fact_sb[atsg][sb];
+            ssch->sig_gain_sb_adj[atsg][sb]  = ssch->sig_gain_sb_lim[atsg][sb] * boost_fact;
+            ssch->noise_lev_sb_adj[atsg][sb] = ssch->noise_lev_sb_lim[atsg][sb] * boost_fact;
+            ssch->sine_lev_sb_adj[atsg][sb]  = ssch->sine_lev_sb[atsg][sb] * boost_fact;
         }
     }
 }
@@ -5477,8 +5477,8 @@ static void generate_noise(AC4DecodeContext *s, SubstreamChannel *ssch)
             int idx;
 
             ssch->noise_idx_prev[ts][sb] = idx = noise_idx(sb, ts, s, ssch);
-            ssch->qmf_noise[0][ts][sb] = ssch->noise_lev_sb_adj[sb][atsg] * aspx_noise[idx][0];
-            ssch->qmf_noise[1][ts][sb] = ssch->noise_lev_sb_adj[sb][atsg] * aspx_noise[idx][1];
+            ssch->qmf_noise[0][ts][sb] = ssch->noise_lev_sb_adj[atsg][sb] * aspx_noise[idx][0];
+            ssch->qmf_noise[1][ts][sb] = ssch->noise_lev_sb_adj[atsg][sb] * aspx_noise[idx][1];
         }
     }
 }
@@ -5496,9 +5496,9 @@ static void generate_tones(AC4DecodeContext *s, SubstreamChannel *ssch)
             int idx;
 
             ssch->sine_idx_prev[ts][sb] = idx = sine_idx(sb, ts, s, ssch);
-            ssch->qmf_sine[0][ts][sb]  = ssch->sine_lev_sb_adj[sb][atsg];
+            ssch->qmf_sine[0][ts][sb]  = ssch->sine_lev_sb_adj[atsg][sb];
             ssch->qmf_sine[0][ts][sb] *= aspx_sine[0][idx];
-            ssch->qmf_sine[1][ts][sb]  = ssch->sine_lev_sb_adj[sb][atsg] * powf(-1, sb + ssch->sbx);
+            ssch->qmf_sine[1][ts][sb]  = ssch->sine_lev_sb_adj[atsg][sb] * powf(-1, sb + ssch->sbx);
             ssch->qmf_sine[1][ts][sb] *= aspx_sine[1][idx];
         }
     }
@@ -5523,7 +5523,7 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
             atsg++;
         /* Loop over QMF subbands */
         for (int sb = 0; sb < 0 * ssch->num_sb_aspx; sb++) {
-            ssch->Y[0][ts][sb] = ssch->sig_gain_sb_adj[sb][atsg];
+            ssch->Y[0][ts][sb] = ssch->sig_gain_sb_adj[atsg][sb];
             ssch->Y[1][ts][sb] = 0;
             complex_mul(&ssch->Y[0][ts][sb], &ssch->Y[1][ts][sb],
                         ssch->Y[0][ts][sb], ssch->Y[1][ts][sb],
@@ -5539,9 +5539,9 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         /* Loop over QMF subbands */
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             ssch->Y[0][ts][sb] += ssch->qmf_sine[0][ts][sb];
-            ssch->Y[1][ts][sb] += ssch->qmf_sine[1][ts][sb];/*
+            ssch->Y[1][ts][sb] += ssch->qmf_sine[1][ts][sb];
             ssch->Y[0][ts][sb] += ssch->qmf_noise[0][ts][sb];
-            ssch->Y[1][ts][sb] += ssch->qmf_noise[1][ts][sb];*/
+            ssch->Y[1][ts][sb] += ssch->qmf_noise[1][ts][sb];
         }
     }
 
