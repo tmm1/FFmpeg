@@ -223,7 +223,6 @@ typedef struct SubstreamChannel {
     float   sine_lev_sb_adj[42][64];
 
     float   qmf_sine[2][42][64];
-    float   qmf_noise[2][42][64];
     int8_t  sine_idx_prev[42][64];
     int16_t noise_idx_prev[42][64];
 
@@ -260,6 +259,7 @@ typedef struct SubstreamChannel {
     DECLARE_ALIGNED(32, float, alpha1)[64][2];
     DECLARE_ALIGNED(32, float, Y)[2][42][64];
     DECLARE_ALIGNED(32, float, Y_prev)[2][42][64];
+    DECLARE_ALIGNED(32, float, qmf_noise)[2][42][64];
 } SubstreamChannel;
 
 typedef struct Substream {
@@ -5565,7 +5565,8 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
     }
 
     /* Loop over time slots */
-    for (int ts = ssch->atsg_sig[0]; ts < ssch->atsg_sig[ssch->aspx_num_env]; ts++) {
+    for (int ts = ssch->atsg_sig[0] * s->num_ts_in_ats;
+         ts < ssch->atsg_sig[ssch->aspx_num_env] * s->num_ts_in_ats; ts++) {
         /* Loop over QMF subbands */
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {/*
             ssch->Y[0][ts][sb] += ssch->qmf_sine[0][ts][sb];
@@ -5575,7 +5576,7 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         }
     }
 
-    for (int ts = 0; ts < ssch->atsg_sig[ssch->aspx_num_env]; ts++) {
+    for (int ts = 0; ts < ssch->atsg_sig[ssch->aspx_num_env] * s->num_ts_in_ats; ts++) {
         /* Loop over QMF subbands */
         for (int sb = ssch->sbx; sb < 64; sb++) {
             ssch->Q[0][ts][sb] += ssch->Y[0][ts][sb-ssch->sbx];
