@@ -101,6 +101,14 @@ typedef struct SubstreamChannel {
     SubstreamChannelParameters scp;
 
     int     master_reset;
+    int     num_sbg_master;
+    int     num_sb_aspx;
+    int     num_sbg_noise;
+    int     num_sbg_sig_highres;
+    int     num_sbg_sig_lowres;
+    int     sba;
+    int     sbx;
+    int     sbz;
 
     int     sap_mode;
 
@@ -161,16 +169,12 @@ typedef struct SubstreamChannel {
     int     aspx_xover_subband_offset;
     int     aspx_balance;
 
-    uint8_t atsg_freqres[32];
-    uint8_t atsg_freqres_prev[32];
-    int     atsg_sig[32];
-    int     atsg_noise[32];
+    uint8_t atsg_freqres[5];
+    uint8_t atsg_freqres_prev[5];
+    int     atsg_sig[6];
+    int     atsg_noise[3];
     int     previous_stop_pos;
 
-    int     num_sbg_master;
-    int     sba;
-    int     sbx;
-    int     sbz;
     int     sbg_master[24];
     int     sbg_noise[6];
     int     sbg_sig_lowres[24];
@@ -180,10 +184,6 @@ typedef struct SubstreamChannel {
     int     sbg_patch_num_sb[6];
     int     sbg_patch_start_sb[6];
 
-    int     num_sb_aspx;
-    int     num_sbg_noise;
-    int     num_sbg_sig_highres;
-    int     num_sbg_sig_lowres;
     int     num_sbg_sig[8];
     int     sbg_sig[8][24];
     int     num_sbg_patches;
@@ -196,10 +196,9 @@ typedef struct SubstreamChannel {
     int     qscf_sig_sbg[32][64];
     int     qscf_sig_sbg_prev[32][64];
     int     qscf_noise_sbg[2][64];
-
+    float   scf_noise_sbg[2][64];
     float   scf_sig_sbg[32][64];
     float   scf_sig_sb[32][64];
-    float   scf_noise_sbg[2][64];
     float   scf_noise_sb[32][64];
 
     float   gain_vec[32];
@@ -302,7 +301,7 @@ typedef struct Substream {
     int     spec_frontend_m;
     int     spec_frontend_s;
 
-    SubstreamChannel ssch[9];
+    SubstreamChannel ssch[2];
 } Substream;
 
 typedef struct PresentationSubstreamInfo {
@@ -434,10 +433,6 @@ typedef struct AC4DecodeContext {
     DECLARE_ALIGNED(32, float, winl)[2048];
     DECLARE_ALIGNED(32, float, winr)[2048];
 
-    PresentationInfo   pinfo[8];
-    SubstreamGroupInfo ssgroup[8];
-    Substream          substream;
-
     av_tx_fn           tx_fn[8][5];
     AVTXContext       *tx_ctx[8][5];
 
@@ -449,6 +444,10 @@ typedef struct AC4DecodeContext {
     DECLARE_ALIGNED(32, float, sin_atab)[64][128];
     DECLARE_ALIGNED(32, float, cos_stab)[128][64];
     DECLARE_ALIGNED(32, float, sin_stab)[128][64];
+
+    PresentationInfo   pinfo[8];
+    SubstreamGroupInfo ssgroup[8];
+    Substream          substream;
 } AC4DecodeContext;
 
 enum StrideFlag {
@@ -3054,7 +3053,7 @@ static int cmpints(const void *p1, const void *p2)
 static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ssch,
                          int iframe)
 {
-    int sb, sbg = 0, goal_sb, msb, usb;
+    int sb, j, sbg = 0, goal_sb, msb, usb;
     int source_band_low;
     int idx[6];
 
@@ -3123,18 +3122,20 @@ static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *s
         source_band_low = 2;
 
     if (goal_sb < ssch->sbx + ssch->num_sb_aspx) {
-        for (int i = 0, sbg = 0; ssch->sbg_master[i] < goal_sb; i++)
+        for (int i = 0; ssch->sbg_master[i] < goal_sb; i++)
             sbg = i + 1;
     } else {
         sbg = ssch->num_sbg_master;
     }
 
     do {
-        int odd, j = sbg;
+        int odd;
+
+        j = sbg;
         sb = ssch->sbg_master[j];
         odd = (sb - 2 + ssch->sba) % 2;
 
-        while (sb > ( ssch->sba - source_band_low + msb - odd) && j >= 0) {
+        while (sb > (ssch->sba - source_band_low + msb - odd) && j >= 1) {
             j--;
             sb = ssch->sbg_master[j];
             odd = (sb - 2 + ssch->sba) % 2;
@@ -3152,9 +3153,9 @@ static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *s
 
         if (ssch->sbg_master[sbg] - sb < 3)
             sbg = ssch->num_sbg_master;
-    } while (sb != (ssch->sbx + ssch->num_sb_aspx));
+    } while (sb != (ssch->sbx + ssch->num_sb_aspx) && j > 0);
 
-    if ((ssch->sbg_patch_num_sb[ssch->num_sbg_patches - 1] < 3) && (ssch->num_sbg_patches > 1))
+    if ((ssch->num_sbg_patches > 1) && (ssch->sbg_patch_num_sb[ssch->num_sbg_patches - 1] < 3))
         ssch->num_sbg_patches--;
 
     ssch->sbg_patches[0] = ssch->sbx;
@@ -3223,8 +3224,12 @@ static int aspx_data_2ch(AC4DecodeContext *s, Substream *ss,
         ssch1->aspx_xover_subband_offset = ssch0->aspx_xover_subband_offset;
     }
 
-    aspx_elements(s, ss, ssch0, iframe);
-    aspx_elements(s, ss, ssch1, iframe);
+    ret = aspx_elements(s, ss, ssch0, iframe);
+    if (ret < 0)
+        return ret;
+    ret = aspx_elements(s, ss, ssch1, iframe);
+    if (ret < 0)
+        return ret;
 
     ret = aspx_framing(s, ss, ssch0, iframe);
     if (ret < 0)
@@ -3331,7 +3336,9 @@ static int aspx_data_1ch(AC4DecodeContext *s, Substream *ss,
 
     ssch->aspx_balance = 0;
 
-    aspx_elements(s, ss, ssch, iframe);
+    ret = aspx_elements(s, ss, ssch, iframe);
+    if (ret < 0)
+        return ret;
 
     ret = aspx_framing(s, ss, ssch, iframe);
     if (ret < 0)
