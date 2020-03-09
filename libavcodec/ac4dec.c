@@ -5586,8 +5586,8 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
     for (int ts = 0; ts < ssch->atsg_sig[ssch->aspx_num_env] * s->num_ts_in_ats; ts++) {
         /* Loop over QMF subbands */
         for (int sb = ssch->sbx; sb < 64; sb++) {
-            ssch->Q[0][ts][sb] += ssch->Y[0][ts][sb-ssch->sbx];
-            ssch->Q[1][ts][sb] += ssch->Y[1][ts][sb-ssch->sbx];
+            ssch->Q[0][ts][sb-ssch->sbx] = ssch->Y[0][ts][sb-ssch->sbx];
+            ssch->Q[1][ts][sb-ssch->sbx] = ssch->Y[1][ts][sb-ssch->sbx];
         }
     }
 
