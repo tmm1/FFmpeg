@@ -301,7 +301,7 @@ typedef struct Substream {
     int     spec_frontend_m;
     int     spec_frontend_s;
 
-    SubstreamChannel ssch[2];
+    SubstreamChannel ssch[9];
 } Substream;
 
 typedef struct PresentationSubstreamInfo {
@@ -5562,7 +5562,7 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
             atsg++;
         /* Loop over QMF subbands */
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
-            ssch->Y[0][ts][sb] = ssch->sig_gain_sb_adj[atsg][sb];
+            ssch->Y[0][ts][sb] = 0 * ssch->sig_gain_sb_adj[atsg][sb];
             ssch->Y[1][ts][sb] = 0;
             fcomplex_mul(&ssch->Y[0][ts][sb], &ssch->Y[1][ts][sb],
                          ssch->Y[0][ts][sb], ssch->Y[1][ts][sb],
@@ -5583,11 +5583,12 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         }
     }
 
-    for (int ts = 0; ts < ssch->atsg_sig[ssch->aspx_num_env] * s->num_ts_in_ats; ts++) {
+    for (int ts = ssch->atsg_sig[0] * s->num_ts_in_ats;
+         ts < ssch->atsg_sig[ssch->aspx_num_env] * s->num_ts_in_ats; ts++) {
         /* Loop over QMF subbands */
         for (int sb = ssch->sbx; sb < 64; sb++) {
-            ssch->Q[0][ts][sb-ssch->sbx] = ssch->Y[0][ts][sb-ssch->sbx];
-            ssch->Q[1][ts][sb-ssch->sbx] = ssch->Y[1][ts][sb-ssch->sbx];
+            ssch->Q[0][ts][sb] += ssch->Y[0][ts][sb-ssch->sbx];
+            ssch->Q[1][ts][sb] += ssch->Y[1][ts][sb-ssch->sbx];
         }
     }
 
