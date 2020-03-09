@@ -142,7 +142,7 @@ typedef struct SubstreamChannel {
     int     aspx_num_rel_right;
     int     aspx_num_env;
     int     aspx_num_env_prev;
-    int     aspx_freq_res[32];
+    int     aspx_freq_res[5];
     int     aspx_var_bord_left;
     int     aspx_var_bord_right;
     int     aspx_rel_bord_left[4];
@@ -192,6 +192,7 @@ typedef struct SubstreamChannel {
     int     aspx_data[2][32][64];
 
     int     qscf_prev[32][64];
+    int     qscf_noise_prev[32][64];
     int     qscf_sig_sbg[32][64];
     int     qscf_sig_sbg_prev[32][64];
     int     qscf_noise_sbg[2][64];
@@ -248,8 +249,8 @@ typedef struct SubstreamChannel {
 
     DECLARE_ALIGNED(32, float, qmf_filt)[640];
     DECLARE_ALIGNED(32, float, qsyn_filt)[1280];
-    DECLARE_ALIGNED(32, float, Q)[2][32][64];
-    DECLARE_ALIGNED(32, float, Q_prev)[2][32][64];
+    DECLARE_ALIGNED(32, float, Q)[2][42][64];
+    DECLARE_ALIGNED(32, float, Q_prev)[2][42][64];
     DECLARE_ALIGNED(32, float, Q_low)[2][42][64];
     DECLARE_ALIGNED(32, float, Q_low_prev)[2][42][64];
     DECLARE_ALIGNED(32, float, Q_low_ext)[2][42][64];
@@ -4903,6 +4904,7 @@ static int get_qnoise_scale_factors(AC4DecodeContext *s, SubstreamChannel *ssch,
 
     delta = ((ch == 1) && (ssch->aspx_balance == 1)) + 1;
 
+    memcpy(ssch->qscf_noise_prev, ssch->qscf_noise_sbg, sizeof(ssch->qscf_noise_sbg));
     memset(ssch->qscf_noise_sbg, 0, sizeof(ssch->qscf_noise_sbg));
 
     /* Loop over envelopes */
@@ -4915,7 +4917,7 @@ static int get_qnoise_scale_factors(AC4DecodeContext *s, SubstreamChannel *ssch,
                 }
             } else { /* TIME */
                 if (atsg == 0) {
-                    ssch->qscf_noise_sbg[atsg][sbg]  = ssch->qscf_prev[ssch->aspx_num_noise_prev-1][sbg];
+                    ssch->qscf_noise_sbg[atsg][sbg]  = ssch->qscf_noise_prev[ssch->aspx_num_noise_prev-1][sbg];
                     ssch->qscf_noise_sbg[atsg][sbg] += delta * ssch->aspx_data[1][atsg][sbg];
                 } else {
                     ssch->qscf_noise_sbg[atsg][sbg]  = ssch->qscf_noise_sbg[atsg-1][sbg];
@@ -5565,19 +5567,19 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
     /* Loop over time slots */
     for (int ts = ssch->atsg_sig[0]; ts < ssch->atsg_sig[ssch->aspx_num_env]; ts++) {
         /* Loop over QMF subbands */
-        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
+        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {/*
             ssch->Y[0][ts][sb] += ssch->qmf_sine[0][ts][sb];
-            ssch->Y[1][ts][sb] += ssch->qmf_sine[1][ts][sb];
+            ssch->Y[1][ts][sb] += ssch->qmf_sine[1][ts][sb];*/
             ssch->Y[0][ts][sb] += ssch->qmf_noise[0][ts][sb];
             ssch->Y[1][ts][sb] += ssch->qmf_noise[1][ts][sb];
         }
     }
 
-    for (int ts = 0; ts < s->num_qmf_timeslots; ts++) {
+    for (int ts = 0; ts < ssch->atsg_sig[ssch->aspx_num_env]; ts++) {
         /* Loop over QMF subbands */
         for (int sb = ssch->sbx; sb < 64; sb++) {
-            ssch->Q[0][ts][sb] += ssch->Y[0][ts+s->ts_offset_hfgen][sb-ssch->sbx];
-            ssch->Q[1][ts][sb] += ssch->Y[1][ts+s->ts_offset_hfgen][sb-ssch->sbx];
+            ssch->Q[0][ts][sb] += ssch->Y[0][ts][sb-ssch->sbx];
+            ssch->Q[1][ts][sb] += ssch->Y[1][ts][sb-ssch->sbx];
         }
     }
 
