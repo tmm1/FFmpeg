@@ -4459,7 +4459,7 @@ static void scale_spec(AC4DecodeContext *s, int ch)
         int sfb = ssch->offset2sfb[k];
         int g = ssch->offset2g[k];
 
-        ssch->scaled_spec[k] = ssch->sf_gain[g][sfb] * copysignf(quant_lut[FFABS(x)], x) / 32768.f;
+        ssch->scaled_spec[k] = ssch->sf_gain[g][sfb] * copysignf(quant_lut[FFABS(x)], x);
     }
 }
 
@@ -4657,7 +4657,7 @@ static void qmf_synthesis(AC4DecodeContext *s, SubstreamChannel *ssch, float *pc
 
             for (int n = 0; n < 10; n++)
                 temp += w[64*n + sb];
-            pcm[ts*64 + sb] = temp;
+            pcm[ts*64 + sb] = temp / 32768.f;
         }
     }
 }
@@ -5548,7 +5548,7 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         if (ts == ssch->atsg_sig[atsg+1] * s->num_ts_in_ats)
             atsg++;
         /* Loop over QMF subbands */
-        for (int sb = 0; sb < 0 * ssch->num_sb_aspx; sb++) {
+        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             ssch->Y[0][ts][sb] = ssch->sig_gain_sb_adj[atsg][sb];
             ssch->Y[1][ts][sb] = 0;
             complex_mul(&ssch->Y[0][ts][sb], &ssch->Y[1][ts][sb],
@@ -5561,9 +5561,9 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
     /* Loop over time slots */
     for (int ts = ssch->atsg_sig[0]; ts < ssch->atsg_sig[ssch->aspx_num_env]; ts++) {
         /* Loop over QMF subbands */
-        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {/*
+        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             ssch->Y[0][ts][sb] += ssch->qmf_sine[0][ts][sb];
-            ssch->Y[1][ts][sb] += ssch->qmf_sine[1][ts][sb];*/
+            ssch->Y[1][ts][sb] += ssch->qmf_sine[1][ts][sb];
             ssch->Y[0][ts][sb] += ssch->qmf_noise[0][ts][sb];
             ssch->Y[1][ts][sb] += ssch->qmf_noise[1][ts][sb];
         }
