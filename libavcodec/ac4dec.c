@@ -3045,15 +3045,16 @@ static int cmpints(const void *p1, const void *p2)
     return FFDIFFSIGN(left, right);
 }
 
-static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ssch)
+static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ssch,
+                         int iframe)
 {
     int sb, sbg = 0, goal_sb, msb, usb;
     int source_band_low;
     int idx[6];
 
-    ssch->master_reset = (ss->prev_aspx_start_freq != ss->aspx_start_freq) +
-                         (ss->prev_aspx_stop_freq != ss->aspx_stop_freq) +
-                         (ss->prev_aspx_master_freq_scale != ss->aspx_master_freq_scale);
+    ssch->master_reset = ((ss->prev_aspx_start_freq != ss->aspx_start_freq) +
+                          (ss->prev_aspx_stop_freq != ss->aspx_stop_freq) +
+                          (ss->prev_aspx_master_freq_scale != ss->aspx_master_freq_scale)) * iframe;
     if (ssch->master_reset) {
         if (ss->aspx_master_freq_scale == 1) {
             ssch->num_sbg_master = 22 - 2 * ss->aspx_start_freq - 2 * ss->aspx_stop_freq;
@@ -3216,8 +3217,8 @@ static int aspx_data_2ch(AC4DecodeContext *s, Substream *ss,
         ssch1->aspx_xover_subband_offset = ssch0->aspx_xover_subband_offset;
     }
 
-    aspx_elements(s, ss, ssch0);
-    aspx_elements(s, ss, ssch1);
+    aspx_elements(s, ss, ssch0, iframe);
+    aspx_elements(s, ss, ssch1, iframe);
 
     ret = aspx_framing(s, ss, ssch0, iframe);
     if (ret < 0)
@@ -3324,7 +3325,7 @@ static int aspx_data_1ch(AC4DecodeContext *s, Substream *ss,
 
     ssch->aspx_balance = 0;
 
-    aspx_elements(s, ss, ssch);
+    aspx_elements(s, ss, ssch, iframe);
 
     ret = aspx_framing(s, ss, ssch, iframe);
     if (ret < 0)
@@ -5281,6 +5282,7 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
     float LIM_GAIN = 1.41254f;
     float EPSILON0 = powf(10.f, -12.f);
     float MAX_SIG_GAIN = powf(10.f, 5.f);
+    float MAX_BOOST_FACT = 1.584893192f;
     int p_sine_at_end;
 
     if (ssch->aspx_tsg_ptr_prev == ssch->aspx_num_env_prev)
@@ -5294,7 +5296,7 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
         for (int sbg = 0; sbg < ssch->num_sbg_sig_highres; sbg++) {
             int sba = ssch->sbg_sig_highres[sbg] - ssch->sbx;
             int sbz = ssch->sbg_sig_highres[sbg+1] - ssch->sbx;
-            int sb_mid = (int)0.5*(sbz+sba);
+            int sb_mid = (int)(0.5*(sbz + sba));
             /* Map sinusoid markers to QMF subbands */
             for (int sb = ssch->sbg_sig_highres[sbg]-ssch->sbx; sb < ssch->sbg_sig_highres[sbg+1]-ssch->sbx; sb++) {
                 if ((sb == sb_mid) && ((atsg >= ssch->aspx_tsg_ptr) || (p_sine_at_end == 0)
@@ -5417,7 +5419,6 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
         }
     }
 
-    float MAX_BOOST_FACT = 1.584893192;
     /* Loop over envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         int sbg = 0;
