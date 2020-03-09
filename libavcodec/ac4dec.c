@@ -4856,6 +4856,7 @@ static int get_qsignal_scale_factors(AC4DecodeContext *s, SubstreamChannel *ssch
     delta = ((ch == 1) && (ssch->aspx_balance == 1)) + 1;
 
     memcpy(ssch->qscf_sig_sbg_prev, ssch->qscf_sig_sbg, sizeof(ssch->qscf_sig_sbg));
+    memset(ssch->qscf_sig_sbg, 0, sizeof(ssch->qscf_sig_sbg));
 
     /* Loop over Envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
@@ -4959,6 +4960,8 @@ static void aspx_processing(AC4DecodeContext *s, SubstreamChannel *ssch)
 static void mono_deq_signal_factors(AC4DecodeContext *s, SubstreamChannel *ssch)
 {
     float a = (ssch->aspx_qmode_env == 0) + 1;
+
+    memset(ssch->scf_sig_sbg, 0, sizeof(ssch->scf_sig_sbg));
 
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         for (int sbg = 0; sbg < ssch->num_sbg_sig[atsg]; sbg++)
@@ -5254,6 +5257,7 @@ static void map_signoise(AC4DecodeContext *s, SubstreamChannel *ssch)
     int atsg_noise = 0;
 
     memset(ssch->scf_noise_sb, 0, sizeof(ssch->scf_noise_sb));
+    memset(ssch->scf_sig_sb, 0, sizeof(ssch->scf_sig_sb));
 
     /* Loop over Signal Envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
@@ -5328,6 +5332,8 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
         }
     }
 
+    memset(ssch->noise_lev_sb, 0, sizeof(ssch->noise_lev_sb));
+
     /* Loop over envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         /* Loop over QMF subbands in A-SPX range */
@@ -5378,6 +5384,8 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
             ssch->max_sig_gain_sb[atsg][sb] = FFMIN(ssch->max_sig_gain_sbg[atsg][sbg], MAX_SIG_GAIN);
         }
     }
+
+    memset(ssch->noise_lev_sb_lim, 0, sizeof(ssch->noise_lev_sb_lim));
 
     /* Loop over envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
@@ -5430,6 +5438,8 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
         }
     }
 
+    memset(ssch->noise_lev_sb_adj, 0, sizeof(ssch->noise_lev_sb_adj));
+
     /* Loop over envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         /* Loop over QMF subbands */
@@ -5476,6 +5486,8 @@ static void generate_noise(AC4DecodeContext *s, SubstreamChannel *ssch)
 {
     int atsg = 0;
 
+    memset(ssch->qmf_noise, 0, sizeof(ssch->qmf_noise));
+
     /* Loop over QMF time slots */
     for (int ts = ssch->atsg_sig[0] * s->num_ts_in_ats;
          ts < ssch->atsg_sig[ssch->aspx_num_env] * s->num_ts_in_ats; ts++) {
@@ -5518,6 +5530,10 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
 {
     int ts_offset_hfadj = 4;
     int atsg = 0;
+
+    memcpy(ssch->Y_prev, ssch->Y, sizeof(ssch->Y));
+    memset(ssch->Y, 0, sizeof(ssch->Y));
+
     /* Get delayed QMF subsamples from delay buffer */
     for (int ts = 0; ts < ssch->atsg_sig[0] * s->num_ts_in_ats; ts++) {
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
@@ -5542,28 +5558,26 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         }
     }
 
-    memcpy(ssch->Y_prev, ssch->Y, sizeof(ssch->Y));
-
     /* Loop over time slots */
     for (int ts = ssch->atsg_sig[0]; ts < ssch->atsg_sig[ssch->aspx_num_env]; ts++) {
         /* Loop over QMF subbands */
-        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
+        for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {/*
             ssch->Y[0][ts][sb] += ssch->qmf_sine[0][ts][sb];
-            ssch->Y[1][ts][sb] += ssch->qmf_sine[1][ts][sb];
+            ssch->Y[1][ts][sb] += ssch->qmf_sine[1][ts][sb];*/
             ssch->Y[0][ts][sb] += ssch->qmf_noise[0][ts][sb];
             ssch->Y[1][ts][sb] += ssch->qmf_noise[1][ts][sb];
         }
     }
 
-    memcpy(ssch->Q_prev, ssch->Q, sizeof(ssch->Q));
-
     for (int ts = 0; ts < s->num_qmf_timeslots; ts++) {
         /* Loop over QMF subbands */
         for (int sb = 0; sb < 64; sb++) {
-            ssch->Q[0][ts][sb] += ssch->Y[0][ts+s->ts_offset_hfgen][sb];
-            ssch->Q[1][ts][sb] += ssch->Y[1][ts+s->ts_offset_hfgen][sb];
+            ssch->Q[0][ts][sb + ssch->sbx] += ssch->Y[0][ts+s->ts_offset_hfgen][sb];
+            ssch->Q[1][ts][sb + ssch->sbx] += ssch->Y[1][ts+s->ts_offset_hfgen][sb];
         }
     }
+
+    memcpy(ssch->Q_prev, ssch->Q, sizeof(ssch->Q));
 }
 
 static int mono_aspx_processing(AC4DecodeContext *s, Substream *ss)
