@@ -5277,6 +5277,10 @@ static void map_signoise(AC4DecodeContext *s, SubstreamChannel *ssch)
 
 static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
 {
+    float EPSILON = 1.0f;
+    float LIM_GAIN = 1.41254f;
+    float EPSILON0 = powf(10.f, -12.f);
+    float MAX_SIG_GAIN = powf(10.f, 5.f);
     int p_sine_at_end;
 
     if (ssch->aspx_tsg_ptr_prev == ssch->aspx_num_env_prev)
@@ -5333,8 +5337,6 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
         }
     }
 
-    float EPSILON = 1.0;
-
     /* Loop over envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
         /* Loop over QMF subbands in A-SPX range */
@@ -5351,10 +5353,6 @@ static void add_sinusoids(AC4DecodeContext *s, SubstreamChannel *ssch)
             }
         }
     }
-
-    float LIM_GAIN = 1.41254;
-    float EPSILON0 = powf(10, -12);
-    float MAX_SIG_GAIN = powf(10, 5);
 
     /* Loop over envelopes */
     for (int atsg = 0; atsg < ssch->aspx_num_env; atsg++) {
