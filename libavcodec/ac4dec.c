@@ -189,30 +189,30 @@ typedef struct SubstreamChannel {
     int     num_sbg_patches;
     int     num_sbg_lim;
 
-    int     aspx_data[2][32][64];
+    int     aspx_data[2][5][64];
 
-    int     qscf_prev[32][64];
-    int     qscf_noise_prev[32][64];
-    int     qscf_sig_sbg[32][64];
-    int     qscf_sig_sbg_prev[32][64];
+    int     qscf_prev[5][64];
+    int     qscf_noise_prev[2][64];
+    int     qscf_sig_sbg[5][64];
+    int     qscf_sig_sbg_prev[5][64];
     int     qscf_noise_sbg[2][64];
     float   scf_noise_sbg[2][64];
-    float   scf_sig_sbg[32][64];
-    float   scf_sig_sb[32][64];
-    float   scf_noise_sb[32][64];
+    float   scf_sig_sbg[5][64];
+    float   scf_sig_sb[5][64];
+    float   scf_noise_sb[5][64];
 
     float   gain_vec[32];
     float   chirp_arr[6];
     float   chirp_arr_prev[6];
-    float   est_sig_sb[32][64];
-    float   sine_idx_sb[32][64];
-    float   sine_idx_sb_prev[32][64];
-    float   sine_area_sb[32][64];
+    float   est_sig_sb[5][64];
+    float   sine_idx_sb[5][64];
+    float   sine_idx_sb_prev[5][64];
+    float   sine_area_sb[5][64];
     float   sine_lev_sb[5][64];
-    float   noise_lev_sb[32][64];
-    float   sig_gain_sb[32][64];
-    float   max_sig_gain_sbg[32][64];
-    float   max_sig_gain_sb[32][64];
+    float   noise_lev_sb[5][64];
+    float   sig_gain_sb[5][64];
+    float   max_sig_gain_sbg[5][64];
+    float   max_sig_gain_sb[5][64];
     float   noise_lev_sb_lim[5][64];
     float   sig_gain_sb_lim[5][64];
     float   boost_fact_sbg[5][64];
