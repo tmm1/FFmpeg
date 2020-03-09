@@ -20,6 +20,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
+#include <fenv.h>
+
 #define ASSERT_LEVEL 5
 #include "libavutil/avassert.h"
 #include "libavutil/tx.h"
@@ -570,6 +573,8 @@ static av_cold int ac4_decode_init(AVCodecContext *avctx)
 {
     AC4DecodeContext *s = avctx->priv_data;
     int ret;
+
+    feenableexcept(FE_INVALID | FE_OVERFLOW);
 
     s->avctx = avctx;
     s->first_frame = 1;
@@ -5119,13 +5124,13 @@ static void get_covariance(AC4DecodeContext *s, SubstreamChannel *ssch)
     }
 }
 
-static void complex_div(float *r, float *i, float x, float yi, float u, float vi)
+static void fcomplex_div(float *r, float *i, float x, float yi, float u, float vi)
 {
     *r = (x*u + yi*vi) / (u * u + vi * vi);
     *i = (x*vi - u*yi) / (u * u + vi * vi);
 }
 
-static void complex_mul(float *r, float *i, float x, float yi, float u, float vi)
+static void fcomplex_mul(float *r, float *i, float x, float yi, float u, float vi)
 {
     *r = x*u - yi*vi;
     *i = x*vi + u*yi;
@@ -5133,14 +5138,14 @@ static void complex_mul(float *r, float *i, float x, float yi, float u, float vi
 
 static void get_alphas(AC4DecodeContext *s, SubstreamChannel *ssch)
 {
-    float EPSILON_INV = powf(2,-20);
+    float EPSILON_INV = powf(2.f, -20.f);
 
     for (int sb = 0; sb < ssch->sba; sb++) {
         float denom[2];
 
-        complex_mul(&denom[0], &denom[1], ssch->cov[sb][2][2][0], ssch->cov[sb][2][2][1], ssch->cov[sb][1][1][0], ssch->cov[sb][1][1][1]);
+        fcomplex_mul(&denom[0], &denom[1], ssch->cov[sb][2][2][0], ssch->cov[sb][2][2][1], ssch->cov[sb][1][1][0], ssch->cov[sb][1][1][1]);
         denom[0] -= (ssch->cov[sb][1][2][0] * ssch->cov[sb][1][2][0] + ssch->cov[sb][1][2][1] * ssch->cov[sb][1][2][1]) * 1/(1+EPSILON_INV);
-        if (denom[0] == 0 && denom[1] == 0) {
+        if (hypotf(denom[0], denom[1]) > 0.f) {
             ssch->alpha1[sb][0] = 0;
             ssch->alpha1[sb][1] = 0;
         } else {
@@ -5148,17 +5153,16 @@ static void get_alphas(AC4DecodeContext *s, SubstreamChannel *ssch)
                                    (ssch->cov[sb][0][2][0] * ssch->cov[sb][1][1][0] - ssch->cov[sb][0][2][1] * ssch->cov[sb][1][1][1]);
             ssch->alpha1[sb][1]  = (ssch->cov[sb][0][1][0] * ssch->cov[sb][1][2][1] + ssch->cov[sb][0][1][1] * ssch->cov[sb][1][2][0]) -
                                    (ssch->cov[sb][0][2][0] * ssch->cov[sb][1][1][1] + ssch->cov[sb][0][2][1] * ssch->cov[sb][1][1][0]);
-            complex_div(&ssch->alpha1[sb][0], &ssch->alpha1[sb][1], ssch->alpha1[sb][0], ssch->alpha1[sb][1], denom[0], denom[1]);
+            fcomplex_div(&ssch->alpha1[sb][0], &ssch->alpha1[sb][1], ssch->alpha1[sb][0], ssch->alpha1[sb][1], denom[0], denom[1]);
         }
 
-        if (ssch->cov[sb][1][1][0] == 0 &&
-            ssch->cov[sb][1][1][1] == 0) {
+        if (hypotf(ssch->cov[sb][1][1][0], ssch->cov[sb][1][1][1]) > 0.f) {
             ssch->alpha0[sb][0] = 0;
             ssch->alpha0[sb][1] = 0;
         } else {
             ssch->alpha0[sb][0]  = -ssch->cov[sb][0][1][0] + ssch->alpha1[sb][0] * ssch->cov[sb][1][2][0] + ssch->alpha1[sb][1] * ssch->cov[sb][1][2][1];
             ssch->alpha0[sb][1]  = -ssch->cov[sb][0][1][1] + ssch->alpha1[sb][1] * ssch->cov[sb][1][2][0] - ssch->alpha1[sb][0] * ssch->cov[sb][1][2][1];
-            complex_div(&ssch->alpha0[sb][0], &ssch->alpha0[sb][1], ssch->alpha0[sb][0], ssch->alpha0[sb][1], ssch->cov[sb][1][1][0], ssch->cov[sb][1][1][1]);
+            fcomplex_div(&ssch->alpha0[sb][0], &ssch->alpha0[sb][1], ssch->alpha0[sb][0], ssch->alpha0[sb][1], ssch->cov[sb][1][1][0], ssch->cov[sb][1][1][1]);
         }
 
         if (hypotf(ssch->alpha0[sb][0], ssch->alpha0[sb][1]) >= 4.f ||
@@ -5196,16 +5200,16 @@ static void create_high_signal(AC4DecodeContext *s, Substream *ss, SubstreamChan
                 ssch->Q_high[0][ts][sb_high] = ssch->Q_low_ext[0][n][p];
                 ssch->Q_high[1][ts][sb_high] = ssch->Q_low_ext[1][n][p];
 
-                complex_mul(&cplx[0], &cplx[1], ssch->alpha0[p][0], ssch->alpha0[p][1], ssch->Q_low_ext[0][n-2][p], ssch->Q_low_ext[1][n-2][p]);
-                complex_mul(&cplx[0], &cplx[1], cplx[0], cplx[1], ssch->chirp_arr[g], 0);
+                fcomplex_mul(&cplx[0], &cplx[1], ssch->alpha0[p][0], ssch->alpha0[p][1], ssch->Q_low_ext[0][n-2][p], ssch->Q_low_ext[1][n-2][p]);
+                fcomplex_mul(&cplx[0], &cplx[1], cplx[0], cplx[1], ssch->chirp_arr[g], 0);
                 ssch->Q_high[0][ts][sb_high] += cplx[0];
                 ssch->Q_high[1][ts][sb_high] += cplx[1];
-                complex_mul(&cplx[0], &cplx[1], ssch->alpha1[p][0], ssch->alpha1[p][1], ssch->Q_low_ext[0][n-4][p], ssch->Q_low_ext[1][n-4][p]);
-                complex_mul(&cplx[0], &cplx[1], cplx[0], cplx[1], powf(ssch->chirp_arr[g], 2), 0);
+                fcomplex_mul(&cplx[0], &cplx[1], ssch->alpha1[p][0], ssch->alpha1[p][1], ssch->Q_low_ext[0][n-4][p], ssch->Q_low_ext[1][n-4][p]);
+                fcomplex_mul(&cplx[0], &cplx[1], cplx[0], cplx[1], powf(ssch->chirp_arr[g], 2), 0);
                 ssch->Q_high[0][ts][sb_high] += cplx[0];
                 ssch->Q_high[1][ts][sb_high] += cplx[1];
-                if (ss->aspx_preflat == 1)
-                    complex_mul(&ssch->Q_high[0][ts][sb_high], &ssch->Q_high[1][ts][sb_high], ssch->Q_high[0][ts][sb_high], ssch->Q_high[1][ts][sb_high], 1.f / ssch->gain_vec[p], 0);
+                if (ss->aspx_preflat)
+                    fcomplex_mul(&ssch->Q_high[0][ts][sb_high], &ssch->Q_high[1][ts][sb_high], ssch->Q_high[0][ts][sb_high], ssch->Q_high[1][ts][sb_high], 1.f / ssch->gain_vec[p], 0);
             }
             sum_sb_patches += ssch->sbg_patch_num_sb[i];
         }
@@ -5551,10 +5555,10 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
         for (int sb = 0; sb < ssch->num_sb_aspx; sb++) {
             ssch->Y[0][ts][sb] = ssch->sig_gain_sb_adj[atsg][sb];
             ssch->Y[1][ts][sb] = 0;
-            complex_mul(&ssch->Y[0][ts][sb], &ssch->Y[1][ts][sb],
-                        ssch->Y[0][ts][sb], ssch->Y[1][ts][sb],
-                        ssch->Q_high[0][ts + ts_offset_hfadj][sb + ssch->sbx],
-                        ssch->Q_high[1][ts + ts_offset_hfadj][sb + ssch->sbx]);
+            fcomplex_mul(&ssch->Y[0][ts][sb], &ssch->Y[1][ts][sb],
+                         ssch->Y[0][ts][sb], ssch->Y[1][ts][sb],
+                         ssch->Q_high[0][ts + ts_offset_hfadj][sb + ssch->sbx],
+                         ssch->Q_high[1][ts + ts_offset_hfadj][sb + ssch->sbx]);
         }
     }
 
@@ -5571,9 +5575,9 @@ static void assemble_hf_signal(AC4DecodeContext *s, SubstreamChannel *ssch)
 
     for (int ts = 0; ts < s->num_qmf_timeslots; ts++) {
         /* Loop over QMF subbands */
-        for (int sb = 0; sb < 64; sb++) {
-            ssch->Q[0][ts][sb + ssch->sbx] += ssch->Y[0][ts+s->ts_offset_hfgen][sb];
-            ssch->Q[1][ts][sb + ssch->sbx] += ssch->Y[1][ts+s->ts_offset_hfgen][sb];
+        for (int sb = ssch->sbx; sb < 64; sb++) {
+            ssch->Q[0][ts][sb] += ssch->Y[0][ts+s->ts_offset_hfgen][sb-ssch->sbx];
+            ssch->Q[1][ts][sb] += ssch->Y[1][ts+s->ts_offset_hfgen][sb-ssch->sbx];
         }
     }
 
