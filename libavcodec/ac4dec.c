@@ -208,18 +208,18 @@ typedef struct SubstreamChannel {
     float   sine_idx_sb[32][64];
     float   sine_idx_sb_prev[32][64];
     float   sine_area_sb[32][64];
-    float   sine_lev_sb[32][64];
+    float   sine_lev_sb[5][64];
     float   noise_lev_sb[32][64];
     float   sig_gain_sb[32][64];
     float   max_sig_gain_sbg[32][64];
     float   max_sig_gain_sb[32][64];
-    float   noise_lev_sb_lim[32][64];
-    float   sig_gain_sb_lim[32][64];
-    float   boost_fact_sbg[32][64];
-    float   boost_fact_sb[32][64];
-    float   sig_gain_sb_adj[42][64];
-    float   noise_lev_sb_adj[42][64];
-    float   sine_lev_sb_adj[42][64];
+    float   noise_lev_sb_lim[5][64];
+    float   sig_gain_sb_lim[5][64];
+    float   boost_fact_sbg[5][64];
+    float   boost_fact_sb[5][64];
+    float   sig_gain_sb_adj[5][64];
+    float   noise_lev_sb_adj[5][64];
+    float   sine_lev_sb_adj[5][64];
 
     float   qmf_sine[2][42][64];
     int8_t  sine_idx_prev[42][64];
