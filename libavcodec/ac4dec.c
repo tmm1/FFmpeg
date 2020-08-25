@@ -767,8 +767,10 @@ static int variable_bits(GetBitContext *gb, int bits)
 
 static int check_sequence(AC4DecodeContext *s)
 {
-    if (s->sequence_counter > 1020)
+    if (s->sequence_counter > 1020) {
+        av_log(s->avctx, AV_LOG_ERROR, "invalid sequence counter: %d\n", s->sequence_counter);
         return AVERROR_INVALIDDATA;
+    }
 
     if (s->sequence_counter == s->sequence_counter_prev + 1)
         return 0;
@@ -782,6 +784,7 @@ static int check_sequence(AC4DecodeContext *s)
     if (s->sequence_counter == 0 && s->sequence_counter_prev == 0)
         return 0;
 
+    av_log(s->avctx, AV_LOG_ERROR, "unexpected sequence counter: %d vs %d\n", s->sequence_counter, s->sequence_counter_prev);
     return AVERROR_INVALIDDATA;
 }
 
@@ -925,8 +928,10 @@ static int ac4_substream_info(AC4DecodeContext *s, PresentationInfo *p,
 
     ssi->sus_ver = 0;
     ssi->channel_mode = get_vlc2(gb, channel_mode_vlc.table, channel_mode_vlc.bits, 1);
-    if (ssi->channel_mode < 0)
+    if (ssi->channel_mode < 0) {
+        av_log(s->avctx, AV_LOG_ERROR, "invalid channel mode: %d\n", ssi->channel_mode);
         return AVERROR_INVALIDDATA;
+    }
 
     if (ssi->channel_mode == 16)
         ssi->channel_mode += variable_bits(gb, 2);
@@ -1134,8 +1139,10 @@ static int ac4_substream_info_chan(AC4DecodeContext *s, SubstreamGroupInfo *g,
 
     ssi->sus_ver = sus_ver;
     ssi->channel_mode = get_vlc2(gb, channel_mode_vlc.table, channel_mode_vlc.bits, 3);
-    if (ssi->channel_mode < 0)
+    if (ssi->channel_mode < 0) {
+        av_log(s->avctx, AV_LOG_ERROR, "invalid chan channel mode: %d\n", ssi->channel_mode);
         return AVERROR_INVALIDDATA;
+    }
 
     if (ssi->channel_mode == 16)
         ssi->channel_mode += variable_bits(gb, 2);
@@ -2076,8 +2083,10 @@ static int sap_data(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ssch)
         for (int sfb = 0; sfb < max_sfb_g; sfb += 2) {
             if (ssch->sap_coeff_used[g][sfb]) {
                 ssch->dpcm_alpha_q[g][sfb] = get_vlc2(gb, scale_factors_vlc.table, scale_factors_vlc.bits, 3);
-                if (ssch->dpcm_alpha_q[g][sfb] < 0)
+                if (ssch->dpcm_alpha_q[g][sfb] < 0) {
+                    av_log(s->avctx, AV_LOG_ERROR, "sap data\n");
                     return AVERROR_INVALIDDATA;
+                }
             }
         }
     }
@@ -2391,8 +2400,10 @@ static int asf_spectral_data(AC4DecodeContext *s, Substream *ss, SubstreamChanne
                     int cb_mod2 = 9;
                     int cb_mod3 = 27;
 
-                    if (cb_idx < 0)
+                    if (cb_idx < 0) {
+                        av_log(s->avctx, AV_LOG_ERROR, "codebook_dim 4\n");
                         return AVERROR_INVALIDDATA;
+                    }
 
                     ssch->quant_spec[k]   = (cb_idx / cb_mod3) - cb_off;
                     cb_idx -= (ssch->quant_spec[k]   + cb_off) * cb_mod3;
@@ -2425,8 +2436,10 @@ static int asf_spectral_data(AC4DecodeContext *s, Substream *ss, SubstreamChanne
                     int cb_idx = get_vlc2(gb, asf_codebook_vlc[cb].table, asf_codebook_vlc[cb].bits, 3);
                     int sign0 = 0, sign1 = 0;
 
-                    if (cb_idx < 0)
+                    if (cb_idx < 0) {
+                        av_log(s->avctx, AV_LOG_ERROR, "codebook_dim 2\n");
                         return AVERROR_INVALIDDATA;
+                    }
 
                     ssch->quant_spec[k]  = (cb_idx / cb_mod) - cb_off;
                     cb_idx -= (ssch->quant_spec[k] + cb_off) * cb_mod;
@@ -2479,8 +2492,10 @@ static int asf_scalefac_data(AC4DecodeContext *s, Substream *ss, SubstreamChanne
             if ((ssch->sfb_cb[g][sfb]) != 0 && (ssch->max_quant_idx[g][sfb] > 0)) {
                 if (first_scf_found == 1) {
                     ssch->dpcm_sf[g][sfb] = get_vlc2(gb, scale_factors_vlc.table, scale_factors_vlc.bits, 3);
-                    if (ssch->dpcm_sf[g][sfb] < 0)
+                    if (ssch->dpcm_sf[g][sfb] < 0) {
+                        av_log(s->avctx, AV_LOG_ERROR, "scalefac data\n");
                         return AVERROR_INVALIDDATA;
+                    }
                     scale_factor += ssch->dpcm_sf[g][sfb] - 60;
                 } else {
                     first_scf_found = 1;
@@ -2507,8 +2522,10 @@ static int asf_snf_data(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ss
             for (int sfb = 0; sfb < max_sfb; sfb++) {
                 if ((ssch->sfb_cb[g][sfb] == 0) || (ssch->max_quant_idx[g][sfb] == 0)) {
                     ssch->dpcm_snf[g][sfb] = get_vlc2(gb, snf_vlc.table, snf_vlc.bits, 3);
-                    if (ssch->dpcm_snf[g][sfb] < 0)
+                    if (ssch->dpcm_snf[g][sfb] < 0) {
+                        av_log(s->avctx, AV_LOG_ERROR, "snf data\n");
                         return AVERROR_INVALIDDATA;
+                    }
                 }
             }
         }
@@ -2781,16 +2798,20 @@ static int aspx_framing(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ss
     ssch->aspx_num_rel_right = 0;
 
     ssch->aspx_int_class = get_vlc2(gb, aspx_int_class_vlc.table, aspx_int_class_vlc.bits, 1);
-    if (ssch->aspx_int_class < 0)
+    if (ssch->aspx_int_class < 0) {
+        av_log(s->avctx, AV_LOG_ERROR, "invalid aspx int class: %d\n", ssch->aspx_int_class);
         return AVERROR_INVALIDDATA;
+    }
 
     ssch->aspx_num_env_prev = ssch->aspx_num_env;
 
     switch (ssch->aspx_int_class) {
     case FIXFIX:
         ssch->aspx_num_env = 1 << get_bits(gb, 1 + ss->aspx_num_env_bits_fixfix);
-        if (ssch->aspx_num_env > 4)
+        if (ssch->aspx_num_env > 4) {
+            av_log(s->avctx, AV_LOG_ERROR, "invalid aspx num env in FIXFIX: %d\n", ssch->aspx_num_env);
             return AVERROR_INVALIDDATA;
+        }
 
         if (ss->aspx_freq_res_mode == 0)
             ssch->aspx_freq_res[0] = get_bits1(gb);
@@ -2825,8 +2846,10 @@ static int aspx_framing(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ss
         int ptr_bits;
 
         ssch->aspx_num_env = ssch->aspx_num_rel_left + ssch->aspx_num_rel_right + 1;
-        if (ssch->aspx_num_env > 5)
+        if (ssch->aspx_num_env > 5) {
+            av_log(s->avctx, AV_LOG_ERROR, "invalid aspx num env: %d (class %d)\n", ssch->aspx_num_env, ssch->aspx_int_class);
             return AVERROR_INVALIDDATA;
+        }
 
         ptr_bits = ceilf(logf(ssch->aspx_num_env + 2) / logf(2));
         ssch->aspx_tsg_ptr_prev = ssch->aspx_tsg_ptr;
@@ -2973,15 +2996,19 @@ static int aspx_huff_data(AC4DecodeContext *s,
         aspx_cb = get_aspx_hcb(data_type, quant_mode, stereo_mode, F0);
         aspx_off = get_aspx_off(data_type, quant_mode, stereo_mode, F0);
         data[0] = get_vlc2(gb, aspx_cb->table, aspx_cb->bits, 3);
-        if (data[0] < 0)
+        if (data[0] < 0) {
+            av_log(s->avctx, AV_LOG_ERROR, "FREQ 1\n");
             return AVERROR_INVALIDDATA;
+        }
         data[0] -= aspx_off;
         aspx_cb = get_aspx_hcb(data_type, quant_mode, stereo_mode, DF);
         aspx_off = get_aspx_off(data_type, quant_mode, stereo_mode, DF);
         for (int i = 1; i < num_sbg; i++) {
             data[i] = get_vlc2(gb, aspx_cb->table, aspx_cb->bits, 3);
-            if (data[i] < 0)
+            if (data[i] < 0) {
+                av_log(s->avctx, AV_LOG_ERROR, "FREQ 2\n");
                 return AVERROR_INVALIDDATA;
+            }
             data[i] -= aspx_off;
         }
     } else { // TIME
@@ -2989,8 +3016,10 @@ static int aspx_huff_data(AC4DecodeContext *s,
         aspx_off = get_aspx_off(data_type, quant_mode, stereo_mode, DT);
         for (int i = 0; i < num_sbg; i++) {
             data[i] = get_vlc2(gb, aspx_cb->table, aspx_cb->bits, 3);
-            if (data[i] < 0)
+            if (data[i] < 0) {
+                av_log(s->avctx, AV_LOG_ERROR, "TIME\n");
                 return AVERROR_INVALIDDATA;
+            }
             data[i] -= aspx_off;
         }
     }
@@ -3098,8 +3127,10 @@ static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *s
     ssch->num_sbg_sig[1] = ssch->num_sbg_sig_highres;
 
     ssch->num_sbg_noise = FFMAX(1, floorf(ss->aspx_noise_sbg * log2f(ssch->sbz / (float)ssch->sbx) + 0.5));
-    if (ssch->num_sbg_noise > 5)
+    if (ssch->num_sbg_noise > 5) {
+        av_log(s->avctx, AV_LOG_ERROR, "invalid num sbg noise: %d\n", ssch->num_sbg_noise);
         return AVERROR_INVALIDDATA;
+    }
 
     idx[0] = 0;
     ssch->sbg_noise[0] = ssch->sbg_sig_lowres[0];
@@ -3422,20 +3453,26 @@ static int acpl_huff_data(AC4DecodeContext *s,
     if (diff_type == 0) { // DIFF_FREQ
         acpl_cb = get_acpl_hcb(data_type, quant_mode, F0);
         data[start_band] = get_vlc2(gb, acpl_cb->table, acpl_cb->bits, 3);
-        if (data[start_band] < 0)
+        if (data[start_band] < 0) {
+            av_log(s->avctx, AV_LOG_ERROR, "DIFF_FREQ 1\n");
             return AVERROR_INVALIDDATA;
+        }
         acpl_cb = get_acpl_hcb(data_type, quant_mode, DF);
         for (int i = start_band + 1; i < data_bands; i++) {
             data[i] = get_vlc2(gb, acpl_cb->table, acpl_cb->bits, 3);
-            if (data[i] < 0)
+            if (data[i] < 0) {
+                av_log(s->avctx, AV_LOG_ERROR, "DIFF_FREQ 2\n");
                 return AVERROR_INVALIDDATA;
+            }
         }
     } else { // DIFF_TIME
         acpl_cb = get_acpl_hcb(data_type, quant_mode, DT);
         for (int i = start_band; i < data_bands; i++) {
             data[i] = get_vlc2(gb, acpl_cb->table, acpl_cb->bits, 3);
-            if (data[i] < 0)
+            if (data[i] < 0) {
+                av_log(s->avctx, AV_LOG_ERROR, "DIFF_TIME\n");
                 return AVERROR_INVALIDDATA;
+            }
         }
     }
 
@@ -3845,8 +3882,10 @@ static int two_channel_data(AC4DecodeContext *s, Substream *ss,
     GetBitContext *gb = &s->gbc;
     int ret;
 
-    if (get_bits_left(gb) <= 0)
+    if (get_bits_left(gb) <= 0) {
+        av_log(s->avctx, AV_LOG_ERROR, "two_channel_data underflow\n");
         return AVERROR_INVALIDDATA;
+    }
 
     ss->mdct_stereo_proc[x] = get_bits1(gb);
     if (ss->mdct_stereo_proc[x]) {
@@ -4068,6 +4107,7 @@ static int channel_element_5x(AC4DecodeContext *s, int lfe, int iframe)
             return ret;
         break;
     default:
+        av_log(s->avctx, AV_LOG_ERROR, "invalid codec mode: %d\n", ss->codec_mode);
         return AVERROR_INVALIDDATA;
     }
 
@@ -4361,8 +4401,10 @@ static int ac4_substream(AC4DecodeContext *s, SubstreamInfo *ssinfo)
     audio_size = get_bits(gb, 15);
     if (get_bits1(gb))
         audio_size += variable_bits(gb, 7) << 15;
-    if (audio_size > 131072)
+    if (audio_size > 131072) {
+        av_log(s->avctx, AV_LOG_ERROR, "invalid audio_size: %d\n", audio_size);
         return AVERROR_INVALIDDATA;
+    }
 
     av_log(s->avctx, AV_LOG_DEBUG, "audio_size: %d\n", audio_size);
 
@@ -5682,8 +5724,10 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
     int presentation;
     uint32_t header;
 
-    if (avpkt->size < 8)
+    if (avpkt->size < 8) {
+        av_log(s->avctx, AV_LOG_ERROR, "invalid packet size: %d\n", avpkt->size);
         return AVERROR_INVALIDDATA;
+    }
 
     header = AV_RB16(avpkt->data);
     if (header == 0xAC40 || header == 0xAC41) {
