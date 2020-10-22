@@ -2846,7 +2846,7 @@ static int aspx_framing(AC4DecodeContext *s, Substream *ss, SubstreamChannel *ss
         int ptr_bits;
 
         ssch->aspx_num_env = ssch->aspx_num_rel_left + ssch->aspx_num_rel_right + 1;
-        if (ssch->aspx_num_env > 5) {
+        if (ssch->aspx_num_env > 7) {
             av_log(s->avctx, AV_LOG_ERROR, "invalid aspx num env: %d (class %d)\n", ssch->aspx_num_env, ssch->aspx_int_class);
             return AVERROR_INVALIDDATA;
         }
