@@ -1116,6 +1116,9 @@ void ff_rtsp_parse_line(AVFormatContext *s,
     } else if (av_stristart(p, "Content-Type:", &p)) {
         p += strspn(p, SPACE_CHARS);
         av_strlcpy(reply->content_type, p, sizeof(reply->content_type));
+    } else if (av_stristart(p, "com.ses.streamID:", &p)) {
+        p += strspn(p, SPACE_CHARS);
+        av_strlcpy(reply->stream_id, p, sizeof(reply->stream_id));
     }
 }
 
@@ -1557,6 +1560,15 @@ int ff_rtsp_make_setup_request(AVFormatContext *s, const char *host, int port,
                    reply->nb_transports != 1) {
             err = ff_rtsp_averror(reply->status_code, AVERROR_INVALIDDATA);
             goto fail;
+        }
+
+        if (reply->stream_id[0]) {
+            char proto[128], host[128], path[512], auth[128];
+            int port;
+            av_url_split(proto, sizeof(proto), auth, sizeof(auth), host, sizeof(host),
+                        &port, path, sizeof(path), rt->control_uri);
+            ff_url_join(rt->control_uri, sizeof(rt->control_uri), proto, NULL, host,
+                        port, "/stream=%s", reply->stream_id);
         }
 
         /* XXX: same protocol for all streams is required */

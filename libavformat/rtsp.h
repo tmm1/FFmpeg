@@ -188,6 +188,11 @@ typedef struct RTSPMessageHeader {
      * Content type header
      */
     char content_type[64];
+
+    /**
+     * Stream ID header
+     */
+    char stream_id[64];
 } RTSPMessageHeader;
 
 /**
