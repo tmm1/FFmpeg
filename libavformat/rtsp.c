@@ -1496,7 +1496,7 @@ int ff_rtsp_make_setup_request(AVFormatContext *s, const char *host, int port,
             port = ff_rtp_get_local_rtp_port(rtsp_st->rtp_handle);
         have_port:
             snprintf(transport, sizeof(transport) - 1,
-                     "%s/UDP;", trans_pref);
+                     "%s;", trans_pref);
             if (rt->server_type != RTSP_SERVER_REAL)
                 av_strlcat(transport, "unicast;", sizeof(transport));
             av_strlcatf(transport, sizeof(transport),
