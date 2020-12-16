@@ -252,6 +252,24 @@ static void finalize_rtp_handler_init(AVFormatContext *s, RTSPStream *rtsp_st,
     }
 }
 
+static int init_satip_stream(AVFormatContext *s)
+{
+    RTSPState *rt = s->priv_data;
+    RTSPStream *rtsp_st;
+    rtsp_st = av_mallocz(sizeof(RTSPStream));
+    if (!rtsp_st)
+        return AVERROR(ENOMEM);
+    rtsp_st->stream_index = -1;
+    dynarray_add(&rt->rtsp_streams,
+                 &rt->nb_rtsp_streams, rtsp_st);
+    av_strlcpy(rtsp_st->control_url,
+               rt->control_uri, sizeof(rtsp_st->control_url));
+    rtsp_st->sdp_payload_type = 33; // MP2T
+    init_rtp_handler(&ff_mpegts_dynamic_handler, rtsp_st, NULL);
+    finalize_rtp_handler_init(s, rtsp_st, NULL);
+    return 0;
+}
+
 /* parse the rtpmap description: <codec_name>/<clock_rate>[/<other params>] */
 static int sdp_parse_rtpmap(AVFormatContext *s,
                             AVStream *st, RTSPStream *rtsp_st,
@@ -1904,9 +1922,17 @@ redirect:
         break;
     }
 
-    if (CONFIG_RTSP_DEMUXER && s->iformat)
-        err = ff_rtsp_setup_input_streams(s, reply);
-    else if (CONFIG_RTSP_MUXER)
+    if (rt->server_type == RTSP_SERVER_RTP &&
+        av_stristr(rt->control_uri, "msys=dvbs")) {
+        rt->server_type = RTSP_SERVER_SATIP;
+    }
+
+    if (CONFIG_RTSP_DEMUXER && s->iformat) {
+        if (rt->server_type == RTSP_SERVER_SATIP)
+            err = init_satip_stream(s);
+        else
+            err = ff_rtsp_setup_input_streams(s, reply);
+    } else if (CONFIG_RTSP_MUXER)
         err = ff_rtsp_setup_output_streams(s, host);
     else
         av_assert0(0);
