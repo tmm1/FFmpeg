@@ -4490,7 +4490,9 @@ static int compute_window(AC4DecodeContext *s, float *w, int N,
         }
     }
 
-    av_assert0(i < 5);
+    if (i >= 5) {
+        return AVERROR_INVALIDDATA;
+    }
 
     N_skip = (N - N_w) / 2;
     kernel = s->kbd_window[s->frame_len_base_idx][idx];
