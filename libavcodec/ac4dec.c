@@ -1398,6 +1398,9 @@ static int ac4_toc(AC4DecodeContext *s)
     s->iframe_global = get_bits1(gb);
     if (s->iframe_global) {
         s->have_iframe = 1;
+        ret = check_sequence(s);
+        if (ret < 0)
+            s->first_frame = 1;
     } else {
         ret = check_sequence(s);
         if (ret < 0)
@@ -4745,11 +4748,16 @@ static void spectral_synthesis(AC4DecodeContext *s, SubstreamChannel *ssch)
         int idx;
         int N = get_transf_length(s, ssch, g, &idx);
 
-        if (!ssch->N_prev)
+        if (!ssch->N_prev || s->first_frame)
             ssch->N_prev = Nfull;
 
-        compute_window(s, winl, N, ssch->N_prev, Nfull, 0);
-        compute_window(s, winr, ssch->N_prev, N, Nfull, 1);
+        if (compute_window(s, winl, N, ssch->N_prev, Nfull, 0) < 0) {
+            break;
+        }
+
+        if (compute_window(s, winr, ssch->N_prev, N, Nfull, 1) < 0) {
+            break;
+        }
 
         for (int w = 0; w < ssch->scp.num_win_in_group[g]; w++) {
             nskip = (Nfull - N) / 2;
