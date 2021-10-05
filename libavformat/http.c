@@ -68,7 +68,7 @@ typedef struct HTTPContext {
     /* Used if "Transfer-Encoding: chunked" otherwise -1. */
     uint64_t chunksize;
     int chunkend;
-    uint64_t off, end_off, filesize;
+    uint64_t off, end_off, filesize, fileend;
     char *location;
     HTTPAuthState auth_state;
     HTTPAuthState proxy_auth_state;
@@ -621,6 +621,7 @@ static int http_open(URLContext *h, const char *uri, int flags,
         h->is_streamed = 1;
 
     s->filesize = UINT64_MAX;
+    s->fileend = UINT64_MAX;
     s->location = av_strdup(uri);
     if (!s->location)
         return AVERROR(ENOMEM);
@@ -750,13 +751,22 @@ static int parse_location(HTTPContext *s, const char *p)
 static void parse_content_range(URLContext *h, const char *p)
 {
     HTTPContext *s = h->priv_data;
-    const char *slash;
+    const char *slash, *dash;
+    uint64_t range_end = UINT64_MAX;
 
     if (!strncmp(p, "bytes ", 6)) {
         p     += 6;
         s->off = strtoull(p, NULL, 10);
-        if ((slash = strchr(p, '/')) && strlen(slash) > 0)
-            s->filesize = strtoull(slash + 1, NULL, 10);
+        if ((dash = strchr(p, '-')))
+            range_end = strtoll(dash + 1, NULL, 10);
+        if ((slash = strchr(p, '/')) && strlen(slash) > 0) {
+            if (slash[0] == '*') {
+                s->fileend = range_end;
+            } else {
+                s->filesize = strtoull(slash + 1, NULL, 10);
+                s->fileend = UINT64_MAX;
+            }
+        }
     }
     if (s->seekable == -1 && (!s->is_akamai || s->filesize != 2147483647))
         h->is_streamed = 0; /* we _can_ in fact seek */
@@ -1404,6 +1414,7 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
     s->off              = 0;
     s->icy_data_read    = 0;
     s->filesize         = UINT64_MAX;
+    s->fileend          = UINT64_MAX;
     s->willclose        = 0;
     s->end_chunked_post = 0;
     s->end_header       = 0;
@@ -1779,19 +1790,21 @@ static int64_t http_seek_internal(URLContext *h, int64_t off, int whence, int fo
     int old_buf_size, ret;
     AVDictionary *options = NULL;
 
-    if (whence == AVSEEK_SIZE)
+    if (whence == AVSEEK_SIZE && s->fileend != UINT64_MAX)
+        return FFMAX(s->off, s->fileend);
+    else if (whence == AVSEEK_SIZE)
         return s->filesize;
     else if (!force_reconnect &&
              ((whence == SEEK_CUR && off == 0) ||
               (whence == SEEK_SET && off == s->off)))
         return s->off;
-    else if ((s->filesize == UINT64_MAX && whence == SEEK_END))
+    else if ((s->filesize == UINT64_MAX && s->fileend == UINT64_MAX && whence == SEEK_END))
         return AVERROR(ENOSYS);
 
     if (whence == SEEK_CUR)
         off += s->off;
     else if (whence == SEEK_END)
-        off += s->filesize;
+        off += s->fileend != UINT64_MAX ? FFMAX(s->off, s->fileend) : s->filesize;
     else if (whence != SEEK_SET)
         return AVERROR(EINVAL);
     if (off < 0)
