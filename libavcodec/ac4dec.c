@@ -3132,7 +3132,10 @@ static int aspx_elements(AC4DecodeContext *s, Substream *ss, SubstreamChannel *s
     ssch->num_sbg_sig[0] = ssch->num_sbg_sig_lowres;
     ssch->num_sbg_sig[1] = ssch->num_sbg_sig_highres;
 
-    ssch->num_sbg_noise = FFMAX(1, floorf(ss->aspx_noise_sbg * log2f(ssch->sbz / (float)ssch->sbx) + 0.5));
+    if (ssch->sbx)
+        ssch->num_sbg_noise = FFMAX(1, floorf(ss->aspx_noise_sbg * log2f(ssch->sbz / (float)ssch->sbx) + 0.5));
+    else
+        ssch->num_sbg_noise = 0;
     if (ssch->num_sbg_noise > 5) {
         av_log(s->avctx, AV_LOG_ERROR, "invalid num sbg noise: %d\n", ssch->num_sbg_noise);
         return AVERROR_INVALIDDATA;
