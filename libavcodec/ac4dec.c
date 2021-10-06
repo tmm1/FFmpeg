@@ -5766,12 +5766,12 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
 
     presentation = FFMIN(s->target_presentation, FFMAX(0, s->nb_presentations - 1));
     ssinfo = s->version == 2 ? &s->ssgroup[0].ssinfo : &s->pinfo[presentation].ssinfo;
-    avctx->sample_rate = s->fs_index ? 48000 : 44100;
     avctx->channels = channel_mode_nb_channels[ssinfo->channel_mode];
     avctx->channel_layout = channel_mode_layouts[ssinfo->channel_mode];
-    frame->nb_samples = av_rescale(s->frame_len_base,
-                                   s->resampling_ratio.num,
-                                   s->resampling_ratio.den);
+    avctx->sample_rate = s->fs_index ? 48000 : 44100;
+    avctx->sample_rate = av_rescale(avctx->sample_rate,
+                                    s->resampling_ratio.den,
+                                    s->resampling_ratio.num);
     frame->nb_samples = s->frame_len_base;
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
