@@ -4646,6 +4646,7 @@ static int m5channel_processing(AC4DecodeContext *s, Substream *ss)
         break;
     case CM_ASPX_ACPL_1:
     case CM_ASPX_ACPL_2:
+    case CM_ASPX_ACPL_3:
         switch (ss->coding_config) {
         case 0:
             if (ss->mdct_stereo_proc[0])
