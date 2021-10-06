@@ -4014,18 +4014,21 @@ static int channel_element_5x(AC4DecodeContext *s, int lfe, int iframe)
         ss->coding_config = get_bits(gb, 2);
         av_log(s->avctx, AV_LOG_DEBUG, "coding_config: %d\n", ss->coding_config);
         switch (ss->coding_config) {
-        case 0:
+        case 0: {
+            int fl = 0, fr = 1, fc = 2, sl = 3, sr = 4;
             ss->mode_2ch = get_bits1(gb);
-            ret = two_channel_data(s, ss, &ss->ssch[0], &ss->ssch[1], 0);
+            av_log(s->avctx, AV_LOG_DEBUG, "2ch_mode: %d\n", ss->mode_2ch);
+            ret = two_channel_data(s, ss, &ss->ssch[fl], &ss->ssch[ss->mode_2ch ? sl : fr], 0);
             if (ret < 0)
                 return ret;
-            ret = two_channel_data(s, ss, &ss->ssch[2], &ss->ssch[3], 1);
+            ret = two_channel_data(s, ss, &ss->ssch[ss->mode_2ch ? fr : sl], &ss->ssch[sr], 1);
             if (ret < 0)
                 return ret;
-            ret = mono_data(s, ss, &ss->ssch[4], 0, iframe);
+            ret = mono_data(s, ss, &ss->ssch[fc], 0, iframe);
             if (ret < 0)
                 return ret;
             break;
+        }
         case 1:
             ret = three_channel_data(s, ss, &ss->ssch[0], &ss->ssch[1], &ss->ssch[2]);
             if (ret < 0)
