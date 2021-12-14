@@ -104,6 +104,15 @@ COMPILE_MSA = $(call COMPILE,CC,MSAFLAGS)
 $(BIN2CEXE): ffbuild/bin2c_host.o
 	$(HOSTLD) $(HOSTLDFLAGS) $(HOSTLD_O) $^ $(HOSTEXTRALIBS)
 
+%.metal.air: %.metal
+	$(METALCC) $(patsubst $(SRC_PATH)/%,$(SRC_LINK)/%,$<) -o $@
+
+%.metallib: %.metal.air
+	$(METALCC)lib --split-module-without-linking $(patsubst $(SRC_PATH)/%,$(SRC_LINK)/%,$<) -o $@
+
+%.metallib.c: %.metallib
+	$(Q)xxd -i $(patsubst $(SRC_PATH)/%,$(SRC_LINK)/%,$<) | sed -E 's,[a-zA-Z_]*_(vf)_([a-zA-Z_]*)_metallib,\1_\2_metallib,' > $@
+
 %.ptx: %.cu $(SRC_PATH)/compat/cuda/cuda_runtime.h
 	$(COMPILE_NVCC)
 

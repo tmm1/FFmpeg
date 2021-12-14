@@ -382,6 +382,7 @@ Toolchain options:
   --dep-cc=DEPCC           use dependency generator DEPCC [$cc_default]
   --nvcc=NVCC              use Nvidia CUDA compiler NVCC or clang [$nvcc_default]
   --ld=LD                  use linker LD [$ld_default]
+  --metalcc=METALCC        use metal compiler METALCC [$metalcc_default]
   --pkg-config=PKGCONFIG   use pkg-config tool PKGCONFIG [$pkg_config_default]
   --pkg-config-flags=FLAGS pass additional flags to pkgconf []
   --ranlib=RANLIB          use ranlib RANLIB [$ranlib_default]
@@ -2560,6 +2561,7 @@ CMDLINE_SET="
     ln_s
     logfile
     malloc_prefix
+    metalcc
     nm
     optflags
     nvcc
@@ -3610,6 +3612,7 @@ cover_rect_filter_deps="avcodec avformat gpl"
 cropdetect_filter_deps="gpl"
 deinterlace_qsv_filter_deps="libmfx"
 deinterlace_vaapi_filter_deps="vaapi"
+deinterlace_videotoolbox_filter_deps="metal corevideo videotoolbox"
 delogo_filter_deps="gpl"
 denoise_vaapi_filter_deps="vaapi"
 derain_filter_select="dnn"
@@ -3828,6 +3831,7 @@ host_cc_default="gcc"
 doxygen_default="doxygen"
 install="install"
 ln_s_default="ln -s -f"
+metalcc_default="xcrun metal"
 nm_default="nm -g"
 pkg_config_default=pkg-config
 ranlib_default="ranlib"
@@ -4428,7 +4432,7 @@ if enabled cuda_nvcc; then
 fi
 
 set_default arch cc cxx doxygen pkg_config ranlib strip sysinclude \
-    target_exec x86asmexe
+    target_exec x86asmexe metalcc
 enabled cross_compile || host_cc_default=$cc
 set_default host_cc
 
@@ -6316,6 +6320,7 @@ check_apple_framework CoreFoundation
 check_apple_framework CoreMedia
 check_apple_framework CoreVideo
 check_apple_framework CoreAudio
+check_apple_framework Metal
 
 enabled avfoundation && {
     disable coregraphics applicationservices
@@ -7606,6 +7611,7 @@ ARFLAGS=$arflags
 AR_O=$ar_o
 AR_CMD=$ar
 NM_CMD=$nm
+METALCC=$metalcc
 RANLIB=$ranlib
 STRIP=$strip
 STRIPTYPE=$striptype
