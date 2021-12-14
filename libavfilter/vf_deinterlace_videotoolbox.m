@@ -30,7 +30,7 @@
 extern char ff_vf_deinterlace_videotoolbox_metallib_data[];
 extern unsigned int ff_vf_deinterlace_videotoolbox_metallib_len;
 
-typedef struct DeintMetalContext {
+typedef struct DeintVTContext {
     YADIFContext yadif;
 
     AVBufferRef       *device_ref;
@@ -45,7 +45,7 @@ typedef struct DeintMetalContext {
     id<MTLBuffer> mtlParamsBuffer;
 
     CVMetalTextureCacheRef textureCache;
-} DeintMetalContext;
+} DeintVTContext;
 
 struct mtlYadifParams {
     uint channels;
@@ -65,7 +65,7 @@ static void call_kernel(AVFilterContext *ctx,
                         int parity,
                         int tff)
 {
-    DeintMetalContext *s = ctx->priv;
+    DeintVTContext *s = ctx->priv;
     id<MTLCommandBuffer> buffer = s->mtlQueue.commandBuffer;
     id<MTLComputeCommandEncoder> encoder = buffer.computeCommandEncoder;
     struct mtlYadifParams *params = (struct mtlYadifParams *)s->mtlParamsBuffer.contents;
@@ -119,7 +119,7 @@ static CVMetalTextureRef pixbuf_to_texture(AVFilterContext *ctx,
                                            int plane,
                                            MTLPixelFormat format)
 {
-    DeintMetalContext *s = ctx->priv;
+    DeintVTContext *s = ctx->priv;
     CVMetalTextureRef tex = NULL;
     CVReturn ret;
 
@@ -145,7 +145,7 @@ static CVMetalTextureRef pixbuf_to_texture(AVFilterContext *ctx,
 static void filter(AVFilterContext *ctx, AVFrame *dst,
                    int parity, int tff)
 {
-    DeintMetalContext *s = ctx->priv;
+    DeintVTContext *s = ctx->priv;
     YADIFContext *y = &s->yadif;
     int i;
 
@@ -214,7 +214,7 @@ exit:
 
 static av_cold int deint_videotoolbox_init(AVFilterContext *ctx)
 {
-    DeintMetalContext *s = ctx->priv;
+    DeintVTContext *s = ctx->priv;
     NSError *err = nil;
     CVReturn ret;
 
@@ -281,7 +281,7 @@ static av_cold int deint_videotoolbox_init(AVFilterContext *ctx)
 
 static av_cold void deint_videotoolbox_uninit(AVFilterContext *ctx)
 {
-    DeintMetalContext *s = ctx->priv;
+    DeintVTContext *s = ctx->priv;
     YADIFContext *y = &s->yadif;
 
     av_frame_free(&y->prev);
@@ -315,7 +315,7 @@ static av_cold void deint_videotoolbox_uninit(AVFilterContext *ctx)
 static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
-    DeintMetalContext *s  = ctx->priv;
+    DeintVTContext *s  = ctx->priv;
 
     if (!inlink->hw_frames_ctx) {
         av_log(ctx, AV_LOG_ERROR, "A hardware frames reference is "
@@ -338,7 +338,7 @@ static int config_output(AVFilterLink *link)
 {
     AVHWFramesContext *output_frames;
     AVFilterContext *ctx = link->src;
-    DeintMetalContext *s = ctx->priv;
+    DeintVTContext *s = ctx->priv;
     YADIFContext *y = &s->yadif;
     int ret = 0;
 
@@ -445,7 +445,7 @@ static const AVFilterPad deint_videotoolbox_outputs[] = {
 AVFilter ff_vf_deinterlace_videotoolbox = {
     .name           = "deinterlace_videotoolbox",
     .description    = NULL_IF_CONFIG_SMALL("Deinterlace VideoToolbox frames with Metal compute"),
-    .priv_size      = sizeof(DeintMetalContext),
+    .priv_size      = sizeof(DeintVTContext),
     .priv_class     = &deinterlace_videotoolbox_class,
     .init           = deint_videotoolbox_init,
     .uninit         = deint_videotoolbox_uninit,
