@@ -27,8 +27,8 @@
 #import <CoreVideo/CoreVideo.h>
 #import <Metal/Metal.h>
 
-extern char vf_deinterlace_videotoolbox_metallib[];
-extern unsigned int vf_deinterlace_videotoolbox_metallib_len;
+extern char ff_vf_deinterlace_videotoolbox_metallib_data[];
+extern unsigned int ff_vf_deinterlace_videotoolbox_metallib_len;
 
 typedef struct DeintMetalContext {
     YADIFContext yadif;
@@ -227,8 +227,8 @@ static av_cold int deint_videotoolbox_init(AVFilterContext *ctx)
     av_log(ctx, AV_LOG_INFO, "Using Metal device: %s\n", s->mtlDevice.name.UTF8String);
 
     dispatch_data_t libData = dispatch_data_create(
-        vf_deinterlace_videotoolbox_metallib,
-        vf_deinterlace_videotoolbox_metallib_len,
+        ff_vf_deinterlace_videotoolbox_metallib_data,
+        ff_vf_deinterlace_videotoolbox_metallib_len,
         nil,
         nil);
     s->mtlLibrary = [s->mtlDevice

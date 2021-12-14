@@ -110,8 +110,8 @@ $(BIN2CEXE): ffbuild/bin2c_host.o
 %.metallib: %.metal.air
 	$(METALCC)lib --split-module-without-linking $(patsubst $(SRC_PATH)/%,$(SRC_LINK)/%,$<) -o $@
 
-%.metallib.c: %.metallib
-	$(Q)xxd -i $(patsubst $(SRC_PATH)/%,$(SRC_LINK)/%,$<) | sed -E 's,[a-zA-Z_]*_(vf)_([a-zA-Z_]*)_metallib,\1_\2_metallib,' > $@
+%.metallib.c: %.metallib $(BIN2CEXE)
+	$(BIN2C) $(patsubst $(SRC_PATH)/%,$(SRC_LINK)/%,$<) $@ $(subst .,_,$(basename $(notdir $@)))
 
 %.ptx: %.cu $(SRC_PATH)/compat/cuda/cuda_runtime.h
 	$(COMPILE_NVCC)
