@@ -259,6 +259,10 @@ static av_cold int deint_videotoolbox_init(AVFilterContext *ctx)
     s->mtlParamsBuffer = [s->mtlDevice
         newBufferWithLength:sizeof(struct mtlYadifParams)
         options:MTLResourceStorageModeShared];
+    if (!s->mtlParamsBuffer) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to create Metal buffer for parameters\n");
+        return AVERROR_EXTERNAL;
+    }
 
     ret = CVMetalTextureCacheCreate(
         NULL,
