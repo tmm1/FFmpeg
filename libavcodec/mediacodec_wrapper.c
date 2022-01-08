@@ -25,6 +25,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/mem.h"
 #include "libavutil/avstring.h"
+#include "libavutil/pixdesc.h"
 
 #include "avcodec.h"
 #include "ffjni.h"
@@ -67,6 +68,9 @@ struct JNIAMediaCodecListFields {
     jfieldID hevc_profile_main10_id;
     jfieldID hevc_profile_main10_hdr10_id;
 
+    jfieldID av1_profile_main8_id;
+    jfieldID av1_profile_main10_id;
+
 };
 
 static const struct FFJniField jni_amediacodeclist_mapping[] = {
@@ -103,6 +107,9 @@ static const struct FFJniField jni_amediacodeclist_mapping[] = {
         { "android/media/MediaCodecInfo$CodecProfileLevel", "HEVCProfileMain", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecListFields, hevc_profile_main_id), 0 },
         { "android/media/MediaCodecInfo$CodecProfileLevel", "HEVCProfileMain10", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecListFields, hevc_profile_main10_id), 0 },
         { "android/media/MediaCodecInfo$CodecProfileLevel", "HEVCProfileMain10HDR10", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecListFields, hevc_profile_main10_hdr10_id), 0 },
+
+        { "android/media/MediaCodecInfo$CodecProfileLevel", "AV1ProfileMain8", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecListFields, av1_profile_main8_id), 0 },
+        { "android/media/MediaCodecInfo$CodecProfileLevel", "AV1ProfileMain10", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecListFields, av1_profile_main10_id), 0 },
 
     { NULL }
 };
@@ -363,6 +370,17 @@ int ff_AMediaCodecProfile_getProfileFromAVCodecContext(AVCodecContext *avctx)
             break;
         case FF_PROFILE_HEVC_MAIN_10:
             field_id = jfields.hevc_profile_main10_id;
+            break;
+        }
+    } else if (avctx->codec_id == AV_CODEC_ID_AV1) {
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt);
+        int depth = desc->comp[0].depth;
+        switch (avctx->profile) {
+        case FF_PROFILE_AV1_MAIN:
+            if (depth > 8)
+                field_id = jfields.av1_profile_main10_id;
+            else
+                field_id = jfields.av1_profile_main8_id;
             break;
         }
     }

@@ -332,6 +332,15 @@ static av_cold int mediacodec_decode_init(AVCodecContext *avctx)
             goto done;
         break;
 #endif
+#if CONFIG_AV1_MEDIACODEC_DECODER
+    case AV_CODEC_ID_AV1:
+        codec_mime = "video/av1";
+
+        ret = common_set_extradata(avctx, format);
+        if (ret < 0)
+            goto done;
+        break;
+#endif
 #if CONFIG_MPEG2_MEDIACODEC_DECODER
     case AV_CODEC_ID_MPEG2VIDEO:
         codec_mime = "video/mpeg2";
@@ -552,6 +561,10 @@ DECLARE_MEDIACODEC_VDEC(h264, "H.264", AV_CODEC_ID_H264, "h264_mp4toannexb")
 
 #if CONFIG_HEVC_MEDIACODEC_DECODER
 DECLARE_MEDIACODEC_VDEC(hevc, "H.265", AV_CODEC_ID_HEVC, "hevc_mp4toannexb")
+#endif
+
+#if CONFIG_AV1_MEDIACODEC_DECODER
+DECLARE_MEDIACODEC_VDEC(av1, "AV1", AV_CODEC_ID_AV1, NULL)
 #endif
 
 #if CONFIG_MPEG2_MEDIACODEC_DECODER
