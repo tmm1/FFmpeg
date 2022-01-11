@@ -2078,7 +2078,7 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
         if (ext_desc_tag == 0x15) { /* AC-4 descriptor */
             st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
             st->codecpar->codec_id = AV_CODEC_ID_AC4;
-            st->internal->request_probe = 0;
+            st->internal->request_probe = AVPROBE_SCORE_STREAM_RETRY / 5;
 
             st->internal->need_context_update = 1;
         }
