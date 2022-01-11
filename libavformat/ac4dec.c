@@ -38,7 +38,7 @@ static int ac4_probe(const AVProbeData *p)
              buf[1] == 0x41)) {
             size = (buf[2] << 8) | buf[3];
             if (size == 0xFFFF)
-                size = 3 + (buf[4] << 16) | (buf[5] << 8) | buf[6];
+                size = 3 + ((buf[4] << 16) | (buf[5] << 8) | buf[6]);
             size += 4;
             if (buf[1] == 0x41)
                 size += 2;
