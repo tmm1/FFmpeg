@@ -7173,6 +7173,7 @@ static const AVCodecTag codec_mp4_tags[] = {
     { AV_CODEC_ID_MP2,             MKTAG('m', 'p', '4', 'a') },
     { AV_CODEC_ID_AC3,             MKTAG('a', 'c', '-', '3') },
     { AV_CODEC_ID_EAC3,            MKTAG('e', 'c', '-', '3') },
+    { AV_CODEC_ID_AC4,             MKTAG('a', 'c', '-', '4') },
     { AV_CODEC_ID_DTS,             MKTAG('m', 'p', '4', 'a') },
     { AV_CODEC_ID_TRUEHD,          MKTAG('m', 'l', 'p', 'a') },
     { AV_CODEC_ID_FLAC,            MKTAG('f', 'L', 'a', 'C') },
