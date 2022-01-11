@@ -5748,8 +5748,10 @@ static int ac4_decode_frame(AVCodecContext *avctx, void *data,
         int size = AV_RB16(avpkt->data + 2);
 
         start_offset = 4;
-        if (size == 0xFFFF)
+        if (size == 0xFFFF) {
             start_offset += 3;
+            size = AV_RB24(avpkt->data + 4);
+        }
     }
 
     if ((ret = init_get_bits8(gb, avpkt->data, avpkt->size)) < 0)
