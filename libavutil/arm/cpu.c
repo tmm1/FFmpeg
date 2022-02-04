@@ -36,6 +36,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/auxv.h>
 #include "libavutil/avstring.h"
 
 #define AT_HWCAP        16
@@ -47,6 +48,15 @@
 #define HWCAP_NEON      (1 << 12)
 #define HWCAP_VFPv3     (1 << 13)
 #define HWCAP_TLS       (1 << 15)
+
+static int get_auxval(uint32_t *hwcap)
+{
+    unsigned long ret = getauxval(AT_HWCAP);
+    if (ret == 0)
+        return -1;
+    *hwcap = ret;
+    return 0;
+}
 
 static int get_hwcap(uint32_t *hwcap)
 {
@@ -106,9 +116,10 @@ int ff_get_cpu_flags_arm(void)
     int flags = CORE_CPU_FLAGS;
     uint32_t hwcap;
 
-    if (get_hwcap(&hwcap) < 0)
-        if (get_cpuinfo(&hwcap) < 0)
-            return flags;
+    if (get_auxval(&hwcap) < 0)
+        if (get_hwcap(&hwcap) < 0)
+            if (get_cpuinfo(&hwcap) < 0)
+                return flags;
 
 #define check_cap(cap, flag) do {               \
         if (hwcap & HWCAP_ ## cap)              \
