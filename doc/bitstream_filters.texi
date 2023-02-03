@@ -537,6 +537,17 @@ Decompress non-standard compressed MP3 audio headers.
 Modify metadata embedded in an MPEG-2 stream.
 
 @table @option
+@item a53_cc
+Insert or remove user data containing A/53 closed captions.
+
+@table @samp
+@item pass
+@item insert
+@item remove
+@end table
+
+Default is pass.
+
 @item display_aspect_ratio
 Set the display aspect ratio in the stream.
 
